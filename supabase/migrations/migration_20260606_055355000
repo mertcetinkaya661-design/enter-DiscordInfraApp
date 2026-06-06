@@ -1,0 +1,33 @@
+-- Fix handle_new_user trigger to handle username conflicts gracefully
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER AS $$
+DECLARE
+  base_username TEXT;
+  final_username TEXT;
+  base_display TEXT;
+  counter INT := 0;
+BEGIN
+  base_username := LOWER(REGEXP_REPLACE(
+    COALESCE(NEW.raw_user_meta_data->>'username', split_part(NEW.email, '@', 1)),
+    '[^a-z0-9_]', '_', 'g'
+  ));
+  base_display := COALESCE(NEW.raw_user_meta_data->>'display_name', base_username);
+  final_username := base_username;
+
+  -- Find a unique username by appending a number if needed
+  WHILE EXISTS (SELECT 1 FROM public.profiles WHERE username = final_username) LOOP
+    counter := counter + 1;
+    final_username := base_username || counter::text;
+  END LOOP;
+
+  INSERT INTO public.profiles (id, username, display_name)
+  VALUES (NEW.id, final_username, base_display)
+  ON CONFLICT (id) DO NOTHING;
+
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  -- Log error but don't fail the auth signup
+  RAISE WARNING 'handle_new_user failed for user %: %', NEW.id, SQLERRM;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
