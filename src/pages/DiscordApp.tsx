@@ -4,6 +4,7 @@ import {
   ChevronDown, ChevronRight, Settings, Plus, Paperclip, Smile,
   Mic, MicOff, Send, LogOut, Headphones, VolumeX, PhoneOff, Copy, Check,
   UserPlus, Shield, UserX, Bot, X as XIcon, FileText, Download, MonitorSpeaker,
+  Monitor,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useServers } from '../hooks/useServers';
@@ -670,6 +671,12 @@ function ParticipantCard({ p, isMe }: { p: VoiceParticipant; isMe?: boolean }) {
       <span className="max-w-[88px] truncate text-center text-xs font-semibold text-dc-text-secondary">
         {p.displayName}
       </span>
+      {p.isScreenSharing && (
+        <div className="flex items-center gap-1 rounded-full bg-green-500/15 px-2 py-0.5">
+          <Monitor className="h-2.5 w-2.5 text-green-400" />
+          <span className="text-[9px] font-bold text-green-400">Paylaşıyor</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -680,7 +687,10 @@ function VoicePanel({ channelId, channelName, userId, voice }: {
   userId: string;
   voice: ReturnType<typeof useVoiceChannel>;
 }) {
-  const { participants, isConnected, isMuted, isDeafened, listenOnly, error, joinChannel, leaveChannel, toggleMute, toggleDeafen } = voice;
+  const { participants, isConnected, isMuted, isDeafened, listenOnly, error,
+    isScreenSharing, screenStreams,
+    joinChannel, leaveChannel, toggleMute, toggleDeafen,
+    startScreenShare, stopScreenShare } = voice;
   const micDenied = error === 'MIC_DENIED';
   const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'prompt' | 'unknown'>('unknown');
   const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([]);
@@ -828,6 +838,57 @@ function VoicePanel({ channelId, channelName, userId, voice }: {
         <div className="absolute bottom-0 left-0 right-0 h-px bg-dc-surface" />
       </div>
 
+      {/* Screen share streams */}
+      {screenStreams.size > 0 && (
+        <div className="flex flex-col gap-3 p-4 pb-0">
+          {Array.from(screenStreams.entries()).map(([peerId, stream]) => {
+            const sharer = participants.find(p => p.userId === peerId);
+            return (
+              <div key={peerId} className="relative overflow-hidden rounded-2xl bg-dc-surface ring-1 ring-fox-500/30">
+                <video
+                  autoPlay
+                  playsInline
+                  muted
+                  ref={el => { if (el && el.srcObject !== stream) el.srcObject = stream; }}
+                  className="w-full rounded-2xl"
+                  style={{ maxHeight: 320, objectFit: 'contain', background: '#000' }}
+                />
+                <div className="absolute bottom-2 left-2 flex items-center gap-1.5 rounded-lg bg-dc-bg/80 px-2 py-1 backdrop-blur-sm">
+                  <Monitor className="h-3 w-3 text-fox-400" />
+                  <span className="text-xs font-medium text-dc-text-primary">{sharer?.displayName ?? 'Kullanıcı'} ekranı paylaşıyor</span>
+                </div>
+              </div>
+            );
+          })}
+          {/* Local screen sharing active indicator */}
+          {isScreenSharing && (
+            <div className="relative overflow-hidden rounded-2xl bg-dc-surface ring-1 ring-green-500/40">
+              <div className="flex items-center justify-center gap-3 py-6">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-500/20">
+                  <Monitor className="h-5 w-5 text-green-400 animate-pulse" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-green-400">Ekranınızı paylaşıyorsunuz</p>
+                  <button onClick={stopScreenShare} className="text-xs text-dc-muted-fg hover:text-red-400 transition-colors mt-0.5">Paylaşımı durdur</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Local screen sharing indicator (when no remote screens) */}
+      {isScreenSharing && screenStreams.size === 0 && (
+        <div className="mx-4 mt-4 flex items-center gap-3 rounded-xl bg-green-500/10 px-4 py-3 ring-1 ring-green-500/25">
+          <Monitor className="h-4 w-4 flex-shrink-0 text-green-400 animate-pulse" />
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-semibold text-green-400">Ekranınızı paylaşıyorsunuz</p>
+            <p className="text-[11px] text-dc-muted-fg">Diğer katılımcılar görüntüleyebilir</p>
+          </div>
+          <button onClick={stopScreenShare} className="text-xs text-red-400 hover:text-red-300 font-medium transition-colors flex-shrink-0">Durdur</button>
+        </div>
+      )}
+
       {/* Participants grid */}
       <div className="flex flex-1 items-center justify-center overflow-auto p-8">
         {participants.length === 0 ? (
@@ -898,6 +959,21 @@ function VoicePanel({ channelId, channelName, userId, voice }: {
             </button>
           </TooltipTrigger>
           <TooltipContent side="top">{isDeafened ? 'Sesi Aç' : 'Sesi Kapat'}</TooltipContent>
+        </Tooltip>
+
+        <Tooltip delayDuration={100}>
+          <TooltipTrigger asChild>
+            <button
+              onClick={isScreenSharing ? stopScreenShare : startScreenShare}
+              className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all
+                ${isScreenSharing
+                  ? 'bg-green-500/20 text-green-400 ring-1 ring-green-500/40 hover:bg-green-500/30 animate-pulse'
+                  : 'bg-dc-sidebar text-dc-text-primary hover:bg-dc-channel-hover'}`}
+            >
+              <Monitor className="h-5 w-5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">{isScreenSharing ? 'Paylaşımı Durdur' : 'Ekran Paylaş'}</TooltipContent>
         </Tooltip>
 
         <Tooltip delayDuration={100}>
@@ -1256,6 +1332,13 @@ export default function DiscordApp() {
                   className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${voice.isDeafened ? 'text-red-400' : 'text-dc-muted-fg hover:text-dc-text-primary'}`}
                 >
                   {voice.isDeafened ? <VolumeX className="h-3.5 w-3.5" /> : <Headphones className="h-3.5 w-3.5" />}
+                </button>
+                <button
+                  onClick={voice.isScreenSharing ? voice.stopScreenShare : voice.startScreenShare}
+                  className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${voice.isScreenSharing ? 'text-green-400 animate-pulse' : 'text-dc-muted-fg hover:text-dc-text-primary'}`}
+                  title={voice.isScreenSharing ? 'Paylaşımı durdur' : 'Ekran paylaş'}
+                >
+                  <Monitor className="h-3.5 w-3.5" />
                 </button>
               </div>
             </div>

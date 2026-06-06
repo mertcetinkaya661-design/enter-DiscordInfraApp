@@ -7,6 +7,7 @@ export interface VoiceParticipant {
   isMuted: boolean;
   isSpeaking: boolean;
   avatarUrl?: string | null;
+  isScreenSharing?: boolean;
 }
 
 type VoicePresenceData = {
@@ -14,6 +15,7 @@ type VoicePresenceData = {
   displayName: string;
   isMuted: boolean;
   avatarUrl?: string | null;
+  isScreenSharing?: boolean;
 };
 
 const STUN: RTCConfiguration = {
@@ -36,15 +38,21 @@ export function useVoiceChannel(
   const [connectedChannelId, setConnectedChannelId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [listenOnly, setListenOnly] = useState(false);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [screenStreams, setScreenStreams] = useState<Map<string, MediaStream>>(new Map());
 
   const rtCh = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const localStream = useRef<MediaStream | null>(null);
+  const screenStream = useRef<MediaStream | null>(null);
   const peers = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const screenSenders = useRef<Map<string, RTCRtpSender>>(new Map());
   const audioEls = useRef<Map<string, HTMLAudioElement>>(new Map());
   const iceQueue = useRef<Map<string, RTCIceCandidateInit[]>>(new Map());
   const audioCtx = useRef<AudioContext | null>(null);
   const analysers = useRef<Map<string, AnalyserNode>>(new Map());
   const rafId = useRef(0);
+  const isMutedRef = useRef(isMuted);
+  useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
 
   // Speaking detection loop
   const startSpeakingLoop = useCallback(() => {
@@ -75,28 +83,53 @@ export function useVoiceChannel(
 
     const peer = new RTCPeerConnection(STUN);
 
+    // Add local audio track
     localStream.current?.getTracks().forEach(t => peer.addTrack(t, localStream.current!));
 
-    peer.ontrack = ({ streams: [stream] }) => {
-      if (!stream) return;
-      let el = audioEls.current.get(peerId);
-      if (!el) {
-        el = new Audio();
-        el.autoplay = true;
-        el.dataset.voice = 'true';
-        document.body.appendChild(el);
-        audioEls.current.set(peerId, el);
+    // Add local screen track if currently sharing
+    if (screenStream.current) {
+      const videoTrack = screenStream.current.getVideoTracks()[0];
+      if (videoTrack) {
+        const sender = peer.addTrack(videoTrack, screenStream.current);
+        screenSenders.current.set(peerId, sender);
       }
-      el.srcObject = stream;
+    }
 
-      // Speaking detection for remote
-      try {
-        if (!audioCtx.current) audioCtx.current = new AudioContext();
-        const src = audioCtx.current.createMediaStreamSource(stream);
-        const an = audioCtx.current.createAnalyser(); an.fftSize = 256;
-        src.connect(an);
-        analysers.current.set(peerId, an);
-      } catch { /* ignore */ }
+    peer.ontrack = ({ track, streams }) => {
+      const stream = streams[0];
+      if (!stream) return;
+
+      if (track.kind === 'audio') {
+        let el = audioEls.current.get(peerId);
+        if (!el) {
+          el = new Audio();
+          el.autoplay = true;
+          el.dataset.voice = 'true';
+          document.body.appendChild(el);
+          audioEls.current.set(peerId, el);
+        }
+        el.srcObject = stream;
+
+        // Speaking detection for remote
+        try {
+          if (!audioCtx.current) audioCtx.current = new AudioContext();
+          const src = audioCtx.current.createMediaStreamSource(stream);
+          const an = audioCtx.current.createAnalyser(); an.fftSize = 256;
+          src.connect(an);
+          analysers.current.set(peerId, an);
+        } catch { /* ignore */ }
+      } else if (track.kind === 'video') {
+        // Remote screen share
+        setScreenStreams(prev => new Map(prev).set(peerId, stream));
+        // Update participant isScreenSharing state
+        setParticipants(prev => prev.map(p => p.userId === peerId ? { ...p, isScreenSharing: true } : p));
+        track.onended = () => {
+          setScreenStreams(prev => {
+            const next = new Map(prev); next.delete(peerId); return next;
+          });
+          setParticipants(prev => prev.map(p => p.userId === peerId ? { ...p, isScreenSharing: false } : p));
+        };
+      }
     };
 
     peer.onicecandidate = ({ candidate }) => {
@@ -111,9 +144,11 @@ export function useVoiceChannel(
     peer.onconnectionstatechange = () => {
       if (peer.connectionState === 'disconnected' || peer.connectionState === 'failed') {
         peers.current.delete(peerId);
+        screenSenders.current.delete(peerId);
         const el = audioEls.current.get(peerId);
         if (el) { el.srcObject = null; el.parentNode?.removeChild(el); audioEls.current.delete(peerId); }
         analysers.current.delete(peerId);
+        setScreenStreams(prev => { const next = new Map(prev); next.delete(peerId); return next; });
         setParticipants(prev => prev.filter(p => p.userId !== peerId));
       }
     };
@@ -165,6 +200,7 @@ export function useVoiceChannel(
           isMuted: u.isMuted,
           isSpeaking: false,
           avatarUrl: u.avatarUrl,
+          isScreenSharing: u.isScreenSharing ?? false,
         }))
       );
     });
@@ -195,17 +231,23 @@ export function useVoiceChannel(
         const lp = p as VoicePresenceData;
         peers.current.get(lp.userId)?.close();
         peers.current.delete(lp.userId);
+        screenSenders.current.delete(lp.userId);
         const el = audioEls.current.get(lp.userId);
         if (el) { el.srcObject = null; el.parentNode?.removeChild(el); audioEls.current.delete(lp.userId); }
         analysers.current.delete(lp.userId);
+        setScreenStreams(prev => { const next = new Map(prev); next.delete(lp.userId); return next; });
         setParticipants(prev => prev.filter(x => x.userId !== lp.userId));
       });
     });
 
-    // Receive offer (the user with lower ID receives and answers)
+    // Receive offer — reuse existing peer for renegotiation
     ch.on('broadcast', { event: 'offer' }, async ({ payload }) => {
       if (payload.to !== myUserId) return;
-      const peer = createPeer(payload.from);
+      // Reuse existing peer connection for renegotiation (e.g. screen share)
+      let peer = peers.current.get(payload.from);
+      if (!peer || peer.connectionState === 'closed' || peer.connectionState === 'failed') {
+        peer = createPeer(payload.from);
+      }
       try {
         await peer.setRemoteDescription(new RTCSessionDescription(payload.sdp));
         await flushIce(payload.from, peer);
@@ -251,6 +293,7 @@ export function useVoiceChannel(
           displayName: myDisplayName,
           isMuted: silent,
           avatarUrl: myAvatarUrl ?? null,
+          isScreenSharing: false,
         });
         setIsConnected(true);
         setConnectedChannelId(channelId);
@@ -264,10 +307,13 @@ export function useVoiceChannel(
     analysers.current.clear();
     peers.current.forEach(p => p.close());
     peers.current.clear();
+    screenSenders.current.clear();
     audioEls.current.forEach(el => { el.srcObject = null; el.parentNode?.removeChild(el); });
     audioEls.current.clear();
     localStream.current?.getTracks().forEach(t => t.stop());
     localStream.current = null;
+    screenStream.current?.getTracks().forEach(t => t.stop());
+    screenStream.current = null;
     audioCtx.current?.close().catch(() => { /* ignore */ });
     audioCtx.current = null;
     if (rtCh.current) { supabase.removeChannel(rtCh.current); rtCh.current = null; }
@@ -278,6 +324,8 @@ export function useVoiceChannel(
     setIsMuted(false);
     setIsDeafened(false);
     setListenOnly(false);
+    setIsScreenSharing(false);
+    setScreenStreams(new Map());
   }, []);
 
   const toggleMute = useCallback(() => {
@@ -287,8 +335,8 @@ export function useVoiceChannel(
     track.enabled = !track.enabled;
     const muted = !track.enabled;
     setIsMuted(muted);
-    rtCh.current?.track({ userId: myUserId, displayName: myDisplayName, isMuted: muted, avatarUrl: myAvatarUrl ?? null });
-  }, [myUserId, myDisplayName, myAvatarUrl]);
+    rtCh.current?.track({ userId: myUserId, displayName: myDisplayName, isMuted: muted, avatarUrl: myAvatarUrl ?? null, isScreenSharing: isScreenSharing });
+  }, [myUserId, myDisplayName, myAvatarUrl, isScreenSharing]);
 
   const toggleDeafen = useCallback(() => {
     setIsDeafened(prev => {
@@ -297,9 +345,73 @@ export function useVoiceChannel(
       if (nd) {
         localStream.current?.getAudioTracks().forEach(t => { t.enabled = false; });
         setIsMuted(true);
-        rtCh.current?.track({ userId: myUserId, displayName: myDisplayName, isMuted: true, avatarUrl: myAvatarUrl ?? null });
+        rtCh.current?.track({ userId: myUserId, displayName: myDisplayName, isMuted: true, avatarUrl: myAvatarUrl ?? null, isScreenSharing: isScreenSharing });
       }
       return nd;
+    });
+  }, [myUserId, myDisplayName, myAvatarUrl, isScreenSharing]);
+
+  const startScreenShare = useCallback(async () => {
+    if (!isConnected || !myUserId || !rtCh.current) return;
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+      screenStream.current = stream;
+      const videoTrack = stream.getVideoTracks()[0];
+      if (!videoTrack) return;
+
+      setIsScreenSharing(true);
+
+      // Add video track to all existing peer connections and renegotiate
+      for (const [peerId, peer] of peers.current.entries()) {
+        try {
+          const sender = peer.addTrack(videoTrack, stream);
+          screenSenders.current.set(peerId, sender);
+          // Send re-offer so the remote side knows about the new video track
+          const offer = await peer.createOffer();
+          await peer.setLocalDescription(offer);
+          rtCh.current.send({
+            type: 'broadcast', event: 'offer',
+            payload: { from: myUserId, to: peerId, sdp: { type: offer.type, sdp: offer.sdp } },
+          });
+        } catch { /* ignore */ }
+      }
+
+      // Broadcast presence update
+      rtCh.current.track({
+        userId: myUserId, displayName: myDisplayName,
+        isMuted: isMutedRef.current, avatarUrl: myAvatarUrl ?? null, isScreenSharing: true,
+      });
+
+      // Handle when user stops sharing via browser stop button
+      videoTrack.onended = () => {
+        screenStream.current?.getTracks().forEach(t => t.stop());
+        screenStream.current = null;
+        setIsScreenSharing(false);
+        // Remove senders from peer connections
+        screenSenders.current.forEach((sender, peerId) => {
+          try { peers.current.get(peerId)?.removeTrack(sender); } catch { /* ignore */ }
+        });
+        screenSenders.current.clear();
+        rtCh.current?.track({
+          userId: myUserId, displayName: myDisplayName,
+          isMuted: isMutedRef.current, avatarUrl: myAvatarUrl ?? null, isScreenSharing: false,
+        });
+      };
+    } catch { /* user cancelled or browser denied */ }
+  }, [isConnected, myUserId, myDisplayName, myAvatarUrl]);
+
+  const stopScreenShare = useCallback(() => {
+    screenStream.current?.getTracks().forEach(t => t.stop());
+    screenStream.current = null;
+    setIsScreenSharing(false);
+    // Remove senders from peer connections
+    screenSenders.current.forEach((sender, peerId) => {
+      try { peers.current.get(peerId)?.removeTrack(sender); } catch { /* ignore */ }
+    });
+    screenSenders.current.clear();
+    rtCh.current?.track({
+      userId: myUserId, displayName: myDisplayName,
+      isMuted: isMutedRef.current, avatarUrl: myAvatarUrl ?? null, isScreenSharing: false,
     });
   }, [myUserId, myDisplayName, myAvatarUrl]);
 
@@ -307,6 +419,7 @@ export function useVoiceChannel(
   useEffect(() => {
     const peersMap = peers.current;
     const streamRef = localStream;
+    const screenRef = screenStream;
     const chRef = rtCh;
     const raf = rafId;
     const audioElsMap = audioEls;
@@ -314,6 +427,7 @@ export function useVoiceChannel(
       cancelAnimationFrame(raf.current);
       peersMap.forEach(p => p.close());
       streamRef.current?.getTracks().forEach(t => t.stop());
+      screenRef.current?.getTracks().forEach(t => t.stop());
       audioElsMap.current.forEach(el => { el.srcObject = null; el.parentNode?.removeChild(el); });
       if (chRef.current) supabase.removeChannel(chRef.current);
     };
@@ -327,9 +441,13 @@ export function useVoiceChannel(
     listenOnly,
     connectedChannelId,
     error,
+    isScreenSharing,
+    screenStreams,
     joinChannel,
     leaveChannel,
     toggleMute,
     toggleDeafen,
+    startScreenShare,
+    stopScreenShare,
   };
 }
