@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Hash, Volume2, Megaphone, Bell, Pin, Users, Search, Sparkles } from 'lucide-react';
-import type { Channel, Message } from '../../types/discord';
-import type { ChannelType } from '../../types/discord';
+import type { Channel, Message, ChannelType } from '../../types/discord';
 import UserAvatar from './UserAvatar';
 import MessageInput from './MessageInput';
 import { currentUser } from '../../data/mock';
