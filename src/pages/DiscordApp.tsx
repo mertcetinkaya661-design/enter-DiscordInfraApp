@@ -1,16 +1,21 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Hash, Volume2, Megaphone, Bell, Pin, Users, Search, Sparkles,
   ChevronDown, ChevronRight, Settings, Plus, Paperclip, Smile,
   Mic, MicOff, Send, LogOut, Headphones, VolumeX, PhoneOff, Copy, Check,
+  UserPlus, Shield, UserX, Bot, X as XIcon,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useServers } from '../hooks/useServers';
 import { useMessages, type Message } from '../hooks/useMessages';
 import { useVoiceChannel, type VoiceParticipant } from '../hooks/useVoiceChannel';
+import { useFriends } from '../hooks/useFriends';
+import { useTyping } from '../hooks/useTyping';
 import FoxLogo from '../components/discord/FoxLogo';
 import AuthPage from './AuthPage';
 import CreateServerModal from '../components/discord/CreateServerModal';
+import ProfileSettingsModal from '../components/discord/ProfileSettingsModal';
+import FriendsPanel from '../components/discord/FriendsPanel';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -24,10 +29,17 @@ function formatTime(iso: string) {
   return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
 }
 
-function Avatar({ name, size = 'md', color }: { name: string; size?: 'sm' | 'md' | 'lg'; color?: string }) {
+function Avatar({ name, size = 'md', color, avatarUrl }: { name: string; size?: 'sm' | 'md' | 'lg'; color?: string; avatarUrl?: string | null }) {
   const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
   const sz = size === 'sm' ? 'w-8 h-8 text-xs' : size === 'lg' ? 'w-20 h-20 text-2xl' : 'w-9 h-9 text-sm';
   const bg = color ?? 'from-fox-500 to-fox-700';
+  if (avatarUrl) {
+    return (
+      <img src={avatarUrl} alt={name} crossOrigin="anonymous"
+        className={`${sz} rounded-full object-cover flex-shrink-0`}
+      />
+    );
+  }
   return (
     <div className={`${sz} rounded-full bg-gradient-to-br ${bg} flex flex-shrink-0 items-center justify-center font-bold text-white`}>
       {initials}
@@ -37,10 +49,11 @@ function Avatar({ name, size = 'md', color }: { name: string; size?: 'sm' | 'md'
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
 
-function MessageBubble({ message, isOwn, showHeader, onDelete }: {
+function MessageBubble({ message, isOwn, showHeader, isBot, onDelete }: {
   message: Message;
   isOwn: boolean;
   showHeader: boolean;
+  isBot?: boolean;
   onDelete?: () => void;
 }) {
   const name = message.author?.display_name ?? 'Bilinmeyen';
@@ -70,7 +83,13 @@ function MessageBubble({ message, isOwn, showHeader, onDelete }: {
   return (
     <div className={`group flex gap-3 px-4 py-0.5 hover:bg-white/[0.02] ${showHeader ? 'mt-4' : ''}`}>
       {showHeader ? (
-        <Avatar name={name} size="md" />
+        isBot ? (
+          <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-fox-500/20 ring-1 ring-fox-500/40">
+            <Bot className="h-4 w-4 text-fox-400" />
+          </div>
+        ) : (
+          <Avatar name={name} size="md" avatarUrl={message.author?.avatar_url} />
+        )
       ) : (
         <div className="w-9 flex-shrink-0" />
       )}
@@ -78,10 +97,11 @@ function MessageBubble({ message, isOwn, showHeader, onDelete }: {
         {showHeader && (
           <div className="mb-1 flex items-baseline gap-2">
             <span className="text-sm font-semibold text-dc-text-primary">{name}</span>
+            {isBot && <span className="rounded bg-fox-500/20 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-fox-400">Bot</span>}
             <span className="text-[11px] text-dc-muted-fg">{formatTime(message.created_at)}</span>
           </div>
         )}
-        <div className="max-w-[80%] rounded-2xl rounded-tl-sm bg-dc-sidebar px-4 py-2 text-sm leading-relaxed text-dc-text-secondary">
+        <div className={`max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-2 text-sm leading-relaxed ${isBot ? 'bg-fox-500/10 text-dc-text-primary ring-1 ring-fox-500/20' : 'bg-dc-sidebar text-dc-text-secondary'}`}>
           {message.content}
           {message.edited_at && <span className="ml-1 text-[10px] text-dc-muted-fg">(düzenlendi)</span>}
         </div>
@@ -90,30 +110,95 @@ function MessageBubble({ message, isOwn, showHeader, onDelete }: {
   );
 }
 
+// ─── Bot Command Processor ────────────────────────────────────────────────────
+
+function processBotCommand(cmd: string, channelId: string): Message | null {
+  const parts = cmd.trim().split(/\s+/);
+  const command = parts[0].toLowerCase();
+  const botAuthor = { id: 'bot', username: 'fixbot', display_name: 'FIX Bot', avatar_url: null };
+  const makeMsg = (content: string): Message => ({
+    id: `bot-${Date.now()}`,
+    channel_id: channelId,
+    author_id: 'bot',
+    content,
+    edited_at: null,
+    created_at: new Date().toISOString(),
+    author: botAuthor,
+  });
+  switch (command) {
+    case '/help': return makeMsg('**FIX Bot Komutları:**\n`/help` - Bu yardım mesajı\n`/roll [maks]` - Zar at\n`/coin` - Para at\n`/shrug` - ¯\\_(ツ)_/¯\n`/serverinfo` - Sunucu bilgisi');
+    case '/roll': {
+      const max = parseInt(parts[1] ?? '6') || 6;
+      return makeMsg(`Zar: **${Math.floor(Math.random() * max) + 1}** (1-${max})`);
+    }
+    case '/coin': return makeMsg(Math.random() > 0.5 ? 'Yazı! (Heads)' : 'Tura! (Tails)');
+    case '/shrug': return makeMsg('¯\\_(ツ)_/¯');
+    case '/serverinfo': return makeMsg('Sunucu bilgisi: FIX Sunucusu · Altyapı: Enter Cloud Realtime');
+    default: return makeMsg(`Bilinmeyen komut: \`${command}\`. \`/help\` yazarak komutları görebilirsin.`);
+  }
+}
+
 // ─── Chat Panel ───────────────────────────────────────────────────────────────
 
-function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, showMembers, onToggleMembers }: {
+function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, userDisplayName, showMembers, onToggleMembers }: {
   channelId: string;
   channelName: string;
   channelType: string;
   channelTopic: string | null;
   userId: string;
+  userDisplayName: string;
   showMembers: boolean;
   onToggleMembers: () => void;
 }) {
-  const { messages, loading, sendMessage, deleteMessage } = useMessages(channelId);
+  const { messages: dbMessages, loading, sendMessage, deleteMessage, searchMessages } = useMessages(channelId, channelName);
+  const { typingUsers, startTyping } = useTyping(channelId, userId, userDisplayName);
   const [input, setInput] = useState('');
   const [focused, setFocused] = useState(false);
+  const [localBotMessages, setLocalBotMessages] = useState<Message[]>([]);
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<Message[]>([]);
+  const [searching, setSearching] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Request notification permission once
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission();
+    }
+  }, []);
+
+  const messages = [...dbMessages, ...localBotMessages].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  );
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'instant' });
   }, [messages]);
 
+  // Debounced search
+  const handleSearchInput = useCallback((q: string) => {
+    setSearchQuery(q);
+    if (searchTimeout.current) clearTimeout(searchTimeout.current);
+    if (!q.trim()) { setSearchResults([]); return; }
+    setSearching(true);
+    searchTimeout.current = setTimeout(async () => {
+      const results = await searchMessages(q);
+      setSearchResults(results as Message[]);
+      setSearching(false);
+    }, 300);
+  }, [searchMessages]);
+
   const handleSend = async () => {
     const content = input.trim();
     if (!content) return;
     setInput('');
+    if (content.startsWith('/')) {
+      const botMsg = processBotCommand(content, channelId);
+      if (botMsg) setLocalBotMessages(prev => [...prev, botMsg]);
+      return;
+    }
     await sendMessage(channelId, userId, content);
   };
 
@@ -121,8 +206,21 @@ function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, 
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInput(e.target.value);
+    startTyping();
+  };
+
+  const typingText = (() => {
+    if (typingUsers.length === 0) return null;
+    if (typingUsers.length === 1) return `${typingUsers[0].displayName} yazıyor...`;
+    if (typingUsers.length === 2) return `${typingUsers[0].displayName} ve ${typingUsers[1].displayName} yazıyor...`;
+    return 'Birkaç kişi yazıyor...';
+  })();
+
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-dc-bg">
+    <div className="flex flex-1 overflow-hidden bg-dc-bg">
+      <div className="flex flex-1 flex-col overflow-hidden">
       {/* Header */}
       <div className="relative flex h-14 flex-shrink-0 items-center gap-3 px-4">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-fox-500/15 text-fox-400">
@@ -137,7 +235,12 @@ function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, 
           <button className="flex h-8 w-8 items-center justify-center rounded-lg text-dc-muted-fg hover:bg-dc-channel-hover hover:text-dc-text-primary transition-all"><Pin className="h-4 w-4" /></button>
           <button onClick={onToggleMembers} className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all hover:bg-dc-channel-hover ${showMembers ? 'bg-fox-500/20 text-fox-400' : 'text-dc-muted-fg hover:text-dc-text-primary'}`}><Users className="h-4 w-4" /></button>
           <div className="mx-1 h-4 w-px bg-dc-surface" />
-          <button className="flex h-8 w-8 items-center justify-center rounded-lg text-dc-muted-fg hover:bg-dc-channel-hover hover:text-dc-text-primary transition-all"><Search className="h-4 w-4" /></button>
+          <button
+            onClick={() => { setShowSearch(v => !v); if (showSearch) { setSearchQuery(''); setSearchResults([]); } }}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all hover:bg-dc-channel-hover ${showSearch ? 'bg-fox-500/20 text-fox-400' : 'text-dc-muted-fg hover:text-dc-text-primary'}`}
+          >
+            <Search className="h-4 w-4" />
+          </button>
           <button className="flex h-8 w-8 items-center justify-center rounded-lg text-dc-muted-fg hover:bg-dc-channel-hover hover:text-dc-text-primary transition-all"><Sparkles className="h-4 w-4" /></button>
         </div>
         <div className="absolute bottom-0 left-0 right-0 h-px bg-dc-surface" />
@@ -166,12 +269,14 @@ function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, 
               const prev = messages[idx - 1];
               const showHeader = !prev || prev.author_id !== msg.author_id ||
                 new Date(msg.created_at).getTime() - new Date(prev.created_at).getTime() > 300000;
+              const isBot = msg.author_id === 'bot';
               return (
                 <MessageBubble
                   key={msg.id}
                   message={msg}
-                  isOwn={msg.author_id === userId}
+                  isOwn={msg.author_id === userId && !isBot}
                   showHeader={showHeader}
+                  isBot={isBot}
                   onDelete={msg.author_id === userId ? () => deleteMessage(msg.id) : undefined}
                 />
               );
@@ -181,17 +286,31 @@ function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, 
         )}
       </div>
 
+      {/* Typing indicator */}
+      <div className="h-5 px-4 flex items-center">
+        {typingText && (
+          <div className="flex items-center gap-2">
+            <div className="flex gap-0.5">
+              {[0,1,2].map(i => (
+                <span key={i} className="h-1.5 w-1.5 rounded-full bg-dc-muted-fg animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+              ))}
+            </div>
+            <span className="text-[11px] text-dc-muted-fg italic">{typingText}</span>
+          </div>
+        )}
+      </div>
+
       {/* Input */}
-      <div className="px-4 pb-5 pt-2">
+      <div className="px-4 pb-5 pt-1">
         <div className={`flex items-end gap-3 rounded-2xl px-4 py-3 transition-all duration-200 ${focused ? 'bg-dc-input ring-1 ring-fox-500/40 shadow-lg shadow-fox-500/10' : 'bg-dc-input'}`}>
           <button className="mb-0.5 text-dc-muted-fg hover:text-fox-400 transition-colors"><Paperclip className="h-5 w-5" /></button>
           <textarea
             value={input}
-            onChange={e => setInput(e.target.value)}
+            onChange={handleInputChange}
             onKeyDown={handleKey}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder={`${channelName} kanalına yaz...`}
+            placeholder={input.startsWith('/') ? 'Komut gir...' : `${channelName} kanalına yaz...`}
             rows={1}
             className="flex-1 resize-none bg-transparent text-sm text-dc-text-primary placeholder:text-dc-muted-fg/60 focus:outline-none"
             style={{ maxHeight: '120px', minHeight: '22px' }}
@@ -200,15 +319,58 @@ function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, 
             <button className="text-dc-muted-fg hover:text-fox-400 transition-colors"><Smile className="h-5 w-5" /></button>
             {input.trim() ? (
               <button onClick={handleSend} className="flex h-8 w-8 items-center justify-center rounded-xl bg-fox-500 text-white shadow-md shadow-fox-500/30 hover:bg-fox-600 active:scale-95 transition-all">
-                <Send className="h-3.5 w-3.5" />
+                {input.startsWith('/') ? <Bot className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
               </button>
             ) : (
               <button className="text-dc-muted-fg hover:text-fox-400 transition-colors"><Mic className="h-5 w-5" /></button>
             )}
           </div>
         </div>
-        <p className="mt-1.5 px-2 text-[10px] text-dc-muted-fg/40">Enter ile gönder · Shift+Enter ile yeni satır</p>
+        <p className="mt-1.5 px-2 text-[10px] text-dc-muted-fg/40">Enter ile gönder · Shift+Enter yeni satır · / ile komut</p>
       </div>
+      </div>
+
+      {/* Search panel */}
+      {showSearch && (
+        <div className="flex w-72 flex-col bg-dc-sidebar" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
+          <div className="flex h-14 flex-shrink-0 items-center gap-2 px-3" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="flex flex-1 items-center gap-2 rounded-xl bg-dc-surface px-3 py-2 ring-1 ring-transparent focus-within:ring-fox-500/50 transition-all">
+              <Search className="h-3.5 w-3.5 text-dc-muted-fg flex-shrink-0" />
+              <input
+                autoFocus
+                value={searchQuery}
+                onChange={e => handleSearchInput(e.target.value)}
+                placeholder="Mesaj ara..."
+                className="flex-1 bg-transparent text-sm text-dc-text-primary outline-none placeholder:text-dc-muted-fg/60"
+              />
+              {searchQuery && (
+                <button onClick={() => { setSearchQuery(''); setSearchResults([]); }} className="text-dc-muted-fg hover:text-dc-text-primary transition-colors">
+                  <XIcon className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto py-2 scrollbar-thin scrollbar-thumb-dc-surface">
+            {searching ? (
+              <p className="py-4 text-center text-sm text-dc-muted-fg">Aranıyor...</p>
+            ) : searchResults.length > 0 ? (
+              searchResults.map(r => (
+                <div key={r.id} className="flex flex-col gap-1 px-3 py-2.5 hover:bg-dc-channel-hover/60 transition-all cursor-pointer">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xs font-semibold text-dc-text-primary">{r.author?.display_name ?? 'Bilinmeyen'}</span>
+                    <span className="text-[10px] text-dc-muted-fg">{formatTime(r.created_at)}</span>
+                  </div>
+                  <p className="text-xs text-dc-text-secondary line-clamp-2">{r.content}</p>
+                </div>
+              ))
+            ) : searchQuery ? (
+              <p className="py-8 text-center text-sm text-dc-muted-fg">Sonuç bulunamadı.</p>
+            ) : (
+              <p className="py-8 text-center text-sm text-dc-muted-fg/60">Bir şey arayın...</p>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -387,16 +549,20 @@ function VoicePanel({ channelId, channelName, voice }: {
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 export default function DiscordApp() {
-  const { user, profile, loading, signIn, signUp, signOut } = useAuth();
-  const { servers, loading: serversLoading, createServer, joinServerByInvite } = useServers(user?.id);
+  const { user, profile, loading, signIn, signUp, signOut, updateProfile } = useAuth();
+  const { servers, loading: serversLoading, createServer, joinServerByInvite, kickMember, banMember } = useServers(user?.id);
   const voice = useVoiceChannel(user?.id ?? null, profile?.display_name ?? null);
+  const friends = useFriends(user?.id ?? null);
 
   const [activeServerId, setActiveServerId] = useState<string | null>(null);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
   const [showMembers, setShowMembers] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showProfileSettings, setShowProfileSettings] = useState(false);
+  const [showFriends, setShowFriends] = useState(false);
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
   const [copiedInvite, setCopiedInvite] = useState(false);
+  const [memberContextMenu, setMemberContextMenu] = useState<{ memberId: string; userId: string; x: number; y: number } | null>(null);
 
   // Auto-select first server/channel
   useEffect(() => {
@@ -410,6 +576,7 @@ export default function DiscordApp() {
 
   const handleSelectServer = (id: string) => {
     setActiveServerId(id);
+    setShowFriends(false);
     const server = servers.find(s => s.id === id);
     const firstText = server?.categories.flatMap(c => c.channels).find(ch => ch.type === 'text');
     setActiveChannelId(firstText?.id ?? null);
@@ -464,6 +631,26 @@ export default function DiscordApp() {
 
         <div className="my-2 h-px w-9 rounded-full bg-dc-sidebar" />
 
+        {/* Friends button */}
+        <Tooltip delayDuration={80}>
+          <TooltipTrigger asChild>
+            <button
+              onClick={() => { setShowFriends(v => !v); setActiveServerId(null); }}
+              className={`group relative flex h-12 w-12 items-center justify-center transition-all duration-300 ${showFriends ? 'rounded-2xl bg-fox-500 text-white' : 'rounded-[50%] bg-dc-bg text-dc-muted-fg hover:rounded-2xl hover:bg-fox-500/20 hover:text-fox-400'}`}
+            >
+              <UserPlus className="h-5 w-5" />
+              {friends.pendingIncoming.length > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white shadow">
+                  {friends.pendingIncoming.length}
+                </span>
+              )}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={12} className="border-none bg-dc-surface font-semibold text-dc-text-primary shadow-xl">Arkadaşlar</TooltipContent>
+        </Tooltip>
+
+        <div className="my-2 h-px w-9 rounded-full bg-dc-sidebar" />
+
         {/* Server icons */}
         <div className="flex flex-col items-center gap-2">
           {serversLoading ? (
@@ -514,7 +701,7 @@ export default function DiscordApp() {
       </div>
 
       {/* Channel sidebar */}
-      {activeServer && (
+      {activeServer && !showFriends && (
         <div className="flex h-full w-64 flex-col bg-dc-sidebar">
           {/* Server header */}
           <div
@@ -633,13 +820,19 @@ export default function DiscordApp() {
 
           {/* User panel */}
           <div className="flex flex-shrink-0 items-center gap-2 p-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-            <div className="flex flex-1 items-center gap-2 rounded-xl p-1.5 hover:bg-white/5 cursor-pointer transition-all">
-              <Avatar name={profile.display_name} size="sm" />
+            <button
+              onClick={() => setShowProfileSettings(true)}
+              className="flex flex-1 items-center gap-2 rounded-xl p-1.5 hover:bg-white/5 cursor-pointer transition-all"
+            >
+              <div className="relative">
+                <Avatar name={profile.display_name} size="sm" avatarUrl={profile.avatar_url} />
+                <span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ring-dc-sidebar ${profile.status === 'online' ? 'bg-green-500' : profile.status === 'idle' ? 'bg-yellow-500' : profile.status === 'dnd' ? 'bg-red-500' : 'bg-dc-muted-fg'}`} />
+              </div>
               <div className="flex min-w-0 flex-col">
                 <span className="truncate text-sm font-bold text-dc-text-primary leading-tight">{profile.display_name}</span>
                 <span className="truncate text-[10px] text-dc-muted-fg">@{profile.username}</span>
               </div>
-            </div>
+            </button>
             <button onClick={signOut} className="flex h-7 w-7 items-center justify-center rounded-lg text-dc-muted-fg hover:bg-white/10 hover:text-red-400 transition-all">
               <LogOut className="h-3.5 w-3.5" />
             </button>
@@ -648,7 +841,17 @@ export default function DiscordApp() {
       )}
 
       {/* Main content */}
-      {activeServer && activeChannel && user ? (
+      {showFriends ? (
+        <FriendsPanel
+          friends={friends.friends}
+          pendingIncoming={friends.pendingIncoming}
+          pendingOutgoing={friends.pendingOutgoing}
+          onSendRequest={friends.sendFriendRequest}
+          onAccept={friends.acceptRequest}
+          onReject={friends.rejectRequest}
+          onRemove={friends.removeFriend}
+        />
+      ) : activeServer && activeChannel && user ? (
         activeChannel.type === 'voice' ? (
           <VoicePanel
             channelId={activeChannel.id}
@@ -662,6 +865,7 @@ export default function DiscordApp() {
             channelType={activeChannel.type}
             channelTopic={activeChannel.topic}
             userId={user.id}
+            userDisplayName={profile.display_name}
             showMembers={showMembers}
             onToggleMembers={() => setShowMembers(v => !v)}
           />
@@ -687,7 +891,7 @@ export default function DiscordApp() {
       )}
 
       {/* Members sidebar */}
-      {activeServer && showMembers && activeChannel?.type !== 'voice' && (
+      {!showFriends && activeServer && showMembers && activeChannel?.type !== 'voice' && (
         <div className="flex h-full w-56 flex-col bg-dc-sidebar">
           <div className="flex h-14 flex-shrink-0 items-center justify-between px-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
             <div className="flex flex-col">
@@ -696,16 +900,63 @@ export default function DiscordApp() {
             </div>
           </div>
           <div className="flex-1 overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-thumb-dc-surface">
-            {activeServer.members.map(member => (
-              <div key={member.id} className="flex items-center gap-2.5 rounded-xl px-2 py-2 hover:bg-dc-channel-hover/60 transition-all cursor-pointer">
-                <Avatar name={member.profile.display_name} size="sm" />
-                <div className="flex min-w-0 flex-col">
-                  <span className="truncate text-xs font-semibold text-dc-text-secondary">{member.nickname ?? member.profile.display_name}</span>
-                  <span className="text-[10px] text-dc-muted-fg/60 capitalize">{member.role}</span>
+            {activeServer.members.map(member => {
+              const isAdmin = activeServer.owner_id === user?.id || activeServer.members.find(m => m.user_id === user?.id)?.role === 'admin';
+              const canModerate = isAdmin && member.user_id !== user?.id && member.role !== 'owner';
+              return (
+                <div
+                  key={member.id}
+                  onContextMenu={canModerate ? (e) => { e.preventDefault(); setMemberContextMenu({ memberId: member.id, userId: member.user_id, x: e.clientX, y: e.clientY }); } : undefined}
+                  className="flex items-center gap-2.5 rounded-xl px-2 py-2 hover:bg-dc-channel-hover/60 transition-all cursor-pointer group"
+                >
+                  <div className="relative flex-shrink-0">
+                    <Avatar name={member.profile.display_name} size="sm" avatarUrl={member.profile.avatar_url} />
+                    <span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ring-dc-sidebar ${member.profile.status === 'online' ? 'bg-green-500' : member.profile.status === 'idle' ? 'bg-yellow-500' : member.profile.status === 'dnd' ? 'bg-red-500' : 'bg-dc-muted-fg/40'}`} />
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <span className={`truncate text-xs font-semibold ${member.profile.status === 'online' ? 'text-dc-text-primary' : 'text-dc-text-secondary/70'}`}>{member.nickname ?? member.profile.display_name}</span>
+                    <div className="flex items-center gap-1">
+                      {member.role === 'owner' && <Shield className="h-2.5 w-2.5 text-fox-400" />}
+                      {member.role === 'admin' && <Shield className="h-2.5 w-2.5 text-blue-400" />}
+                      <span className="text-[10px] text-dc-muted-fg/60 capitalize">{member.role === 'owner' ? 'Sahip' : member.role === 'admin' ? 'Admin' : 'Üye'}</span>
+                    </div>
+                  </div>
+                  {canModerate && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); const r = (e.target as HTMLElement).getBoundingClientRect(); setMemberContextMenu({ memberId: member.id, userId: member.user_id, x: r.left, y: r.bottom + 4 }); }}
+                      className="hidden group-hover:flex h-6 w-6 items-center justify-center rounded text-dc-muted-fg hover:text-dc-text-primary transition-all"
+                    >
+                      <Settings className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
+        </div>
+      )}
+
+      {/* Context menu for member moderation */}
+      {memberContextMenu && (
+        <div
+          className="fixed z-50 rounded-xl bg-dc-surface py-1 shadow-2xl min-w-[160px]"
+          style={{ top: memberContextMenu.y || 100, left: memberContextMenu.x || 100, border: '1px solid rgba(255,255,255,0.08)' }}
+          onClick={() => setMemberContextMenu(null)}
+        >
+          <button
+            onClick={async () => { if (activeServerId) await kickMember(activeServerId, memberContextMenu.userId); setMemberContextMenu(null); }}
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-yellow-400 hover:bg-yellow-500/10 transition-colors"
+          >
+            <UserX className="h-4 w-4" />
+            Sunucudan At
+          </button>
+          <button
+            onClick={async () => { if (activeServerId) await banMember(activeServerId, memberContextMenu.userId); setMemberContextMenu(null); }}
+            className="flex w-full items-center gap-2.5 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 transition-colors"
+          >
+            <Shield className="h-4 w-4" />
+            Yasakla
+          </button>
         </div>
       )}
 
@@ -722,6 +973,20 @@ export default function DiscordApp() {
             if (result?.error) throw result.error;
           }}
         />
+      )}
+
+      {/* Profile settings modal */}
+      {showProfileSettings && profile && (
+        <ProfileSettingsModal
+          profile={profile}
+          onClose={() => setShowProfileSettings(false)}
+          onUpdate={updateProfile}
+        />
+      )}
+
+      {/* Click outside to close context menu */}
+      {memberContextMenu && (
+        <div className="fixed inset-0 z-40" onClick={() => setMemberContextMenu(null)} />
       )}
     </div>
   );

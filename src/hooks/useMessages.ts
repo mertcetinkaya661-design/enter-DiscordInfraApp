@@ -18,10 +18,18 @@ export interface Message {
   author: MessageAuthor | null;
 }
 
-export function useMessages(channelId: string | null) {
+export interface MessageSearchResult {
+  id: string;
+  content: string;
+  created_at: string;
+  author: MessageAuthor | null;
+}
+
+export function useMessages(channelId: string | null, channelName?: string) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const channelNameRef = useRef(channelName);
 
   const fetchMessages = useCallback(async (chId: string) => {
     setLoading(true);
@@ -35,8 +43,9 @@ export function useMessages(channelId: string | null) {
     setLoading(false);
   }, []);
 
+  useEffect(() => { channelNameRef.current = channelName; }, [channelName]);
+
   useEffect(() => {
-    // Cleanup previous subscription
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
@@ -66,6 +75,14 @@ export function useMessages(channelId: string | null) {
             if (prev.some(m => m.id === data.id)) return prev;
             return [...prev, data as Message];
           });
+          // Push notification when tab is hidden
+          if (document.hidden && Notification.permission === 'granted') {
+            const author = (data as Message).author?.display_name ?? 'Bilinmeyen';
+            new Notification(`#${channelNameRef.current ?? 'kanal'} — ${author}`, {
+              body: (data as Message).content,
+              icon: '/favicon.ico',
+            });
+          }
         }
       })
       .on('postgres_changes', {
@@ -109,5 +126,17 @@ export function useMessages(channelId: string | null) {
     await supabase.from('messages').update({ content, edited_at: new Date().toISOString() }).eq('id', messageId);
   };
 
-  return { messages, loading, sendMessage, deleteMessage, editMessage };
+  const searchMessages = async (query: string): Promise<MessageSearchResult[]> => {
+    if (!channelId || !query.trim()) return [];
+    const { data } = await supabase
+      .from('messages')
+      .select('id, content, created_at, author:profiles(id, username, display_name, avatar_url)')
+      .eq('channel_id', channelId)
+      .ilike('content', `%${query}%`)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    return (data as MessageSearchResult[]) ?? [];
+  };
+
+  return { messages, loading, sendMessage, deleteMessage, editMessage, searchMessages };
 }

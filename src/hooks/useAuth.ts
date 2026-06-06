@@ -46,6 +46,8 @@ export function useAuth() {
       setTimeout(async () => {
         if (session?.user) {
           const profile = await fetchProfile(session.user.id);
+          // Mark user as online
+          await supabase.from('profiles').update({ status: 'online' }).eq('id', session.user.id);
           setState({ user: session.user, session, profile, loading: false });
         } else {
           setState({ user: null, session: null, profile: null, loading: false });
@@ -111,6 +113,9 @@ export function useAuth() {
   };
 
   const signOut = async () => {
+    if (state.user) {
+      await supabase.from('profiles').update({ status: 'offline' }).eq('id', state.user.id);
+    }
     await supabase.auth.signOut();
   };
 
@@ -119,5 +124,14 @@ export function useAuth() {
     await supabase.from('profiles').update({ status }).eq('id', state.user.id);
   };
 
-  return { ...state, signIn, signUp, signOut, updateStatus };
+  const updateProfile = async (updates: Partial<Pick<Profile, 'display_name' | 'avatar_url' | 'status' | 'custom_status'>>) => {
+    if (!state.user) return { error: new Error('Not authenticated') };
+    const { error } = await supabase.from('profiles').update(updates).eq('id', state.user.id);
+    if (!error) {
+      setState(prev => ({ ...prev, profile: prev.profile ? { ...prev.profile, ...updates } : prev.profile }));
+    }
+    return { error };
+  };
+
+  return { ...state, signIn, signUp, signOut, updateStatus, updateProfile };
 }

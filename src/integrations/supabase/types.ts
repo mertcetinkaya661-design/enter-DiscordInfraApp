@@ -3266,6 +3266,43 @@ export type Database = {
           },
         ]
       }
+      friendships: {
+        Row: {
+          created_at: string | null
+          id: string
+          receiver_id: string
+          sender_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          receiver_id: string
+          sender_id: string
+          status?: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          receiver_id?: string
+          sender_id?: string
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "friendships_receiver_id_fkey"
+            columns: ["receiver_id"]
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "friendships_sender_id_fkey"
+            columns: ["sender_id"]
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       messages: {
         Row: {
           author_id: string | null
@@ -3313,6 +3350,7 @@ export type Database = {
           custom_status: string | null
           display_name: string
           id: string
+          is_bot: boolean | null
           status: string
           username: string
         }
@@ -3322,6 +3360,7 @@ export type Database = {
           custom_status?: string | null
           display_name: string
           id: string
+          is_bot?: boolean | null
           status?: string
           username: string
         }
@@ -3331,10 +3370,57 @@ export type Database = {
           custom_status?: string | null
           display_name?: string
           id?: string
+          is_bot?: boolean | null
           status?: string
           username?: string
         }
         Relationships: []
+      }
+      server_bans: {
+        Row: {
+          banned_at: string | null
+          banned_by: string | null
+          id: string
+          reason: string | null
+          server_id: string
+          user_id: string
+        }
+        Insert: {
+          banned_at?: string | null
+          banned_by?: string | null
+          id?: string
+          reason?: string | null
+          server_id: string
+          user_id: string
+        }
+        Update: {
+          banned_at?: string | null
+          banned_by?: string | null
+          id?: string
+          reason?: string | null
+          server_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "server_bans_banned_by_fkey"
+            columns: ["banned_by"]
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "server_bans_server_id_fkey"
+            columns: ["server_id"]
+            referencedRelation: "servers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "server_bans_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       server_members: {
         Row: {
@@ -3610,6 +3696,105 @@ export type Database = {
         Relationships: []
       }
       messages_2026_06_06: {
+        Row: {
+          event: string | null
+          extension: string
+          id: string
+          inserted_at: string
+          payload: Json | null
+          private: boolean | null
+          topic: string
+          updated_at: string
+        }
+        Insert: {
+          event?: string | null
+          extension: string
+          id?: string
+          inserted_at?: string
+          payload?: Json | null
+          private?: boolean | null
+          topic: string
+          updated_at?: string
+        }
+        Update: {
+          event?: string | null
+          extension?: string
+          id?: string
+          inserted_at?: string
+          payload?: Json | null
+          private?: boolean | null
+          topic?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      messages_2026_06_07: {
+        Row: {
+          event: string | null
+          extension: string
+          id: string
+          inserted_at: string
+          payload: Json | null
+          private: boolean | null
+          topic: string
+          updated_at: string
+        }
+        Insert: {
+          event?: string | null
+          extension: string
+          id?: string
+          inserted_at?: string
+          payload?: Json | null
+          private?: boolean | null
+          topic: string
+          updated_at?: string
+        }
+        Update: {
+          event?: string | null
+          extension?: string
+          id?: string
+          inserted_at?: string
+          payload?: Json | null
+          private?: boolean | null
+          topic?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      messages_2026_06_08: {
+        Row: {
+          event: string | null
+          extension: string
+          id: string
+          inserted_at: string
+          payload: Json | null
+          private: boolean | null
+          topic: string
+          updated_at: string
+        }
+        Insert: {
+          event?: string | null
+          extension: string
+          id?: string
+          inserted_at?: string
+          payload?: Json | null
+          private?: boolean | null
+          topic: string
+          updated_at?: string
+        }
+        Update: {
+          event?: string | null
+          extension?: string
+          id?: string
+          inserted_at?: string
+          payload?: Json | null
+          private?: boolean | null
+          topic?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      messages_2026_06_09: {
         Row: {
           event: string | null
           extension: string

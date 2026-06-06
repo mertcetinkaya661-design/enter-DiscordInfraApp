@@ -167,5 +167,25 @@ export function useServers(userId: string | undefined) {
     return { error: null, serverId: server.id };
   };
 
-  return { servers, loading, refetch: fetchServers, createServer, joinServerByInvite };
+  const kickMember = async (serverId: string, userId: string) => {
+    const { error } = await supabase
+      .from('server_members')
+      .delete()
+      .eq('server_id', serverId)
+      .eq('user_id', userId);
+    if (!error) await fetchServers();
+    return { error };
+  };
+
+  const banMember = async (serverId: string, userId: string, reason = '') => {
+    await supabase.from('server_bans').upsert({ server_id: serverId, user_id: userId, reason });
+    await supabase.from('server_members').delete().eq('server_id', serverId).eq('user_id', userId);
+    await fetchServers();
+  };
+
+  const unbanMember = async (serverId: string, userId: string) => {
+    await supabase.from('server_bans').delete().eq('server_id', serverId).eq('user_id', userId);
+  };
+
+  return { servers, loading, refetch: fetchServers, createServer, joinServerByInvite, kickMember, banMember, unbanMember };
 }
