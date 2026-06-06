@@ -377,22 +377,45 @@ function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, 
 
 // ─── Voice Panel ──────────────────────────────────────────────────────────────
 
-function ParticipantCard({ p }: { p: VoiceParticipant }) {
+function ParticipantCard({ p, isMe }: { p: VoiceParticipant; isMe?: boolean }) {
   return (
-    <div className="flex flex-col items-center gap-3">
-      <div className={`relative flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-fox-500 to-fox-700 text-xl font-bold text-white transition-all duration-150
-        ${p.isSpeaking ? 'ring-4 ring-fox-400 shadow-[0_0_24px_rgba(232,114,42,0.55)]' : 'ring-4 ring-dc-surface'}`}
+    <div className="flex flex-col items-center gap-2.5">
+      <div className={`relative transition-all duration-150
+        ${p.isSpeaking ? 'scale-105' : ''}`}
       >
-        {p.displayName.slice(0, 2).toUpperCase()}
+        <div className={`rounded-full overflow-hidden transition-all duration-150
+          ${p.isSpeaking
+            ? 'ring-4 ring-fox-400 shadow-[0_0_20px_rgba(232,114,42,0.6)]'
+            : 'ring-4 ring-dc-surface/60'
+          }`}
+          style={{ width: 72, height: 72 }}
+        >
+          {p.avatarUrl ? (
+            <img
+              src={p.avatarUrl}
+              alt={p.displayName}
+              crossOrigin="anonymous"
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-fox-500 to-fox-700 text-xl font-bold text-white">
+              {p.displayName.slice(0, 2).toUpperCase()}
+            </div>
+          )}
+        </div>
+        {/* Status icons */}
         {p.isMuted && (
-          <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-dc-bg ring-2 ring-dc-sidebar">
-            <MicOff className="h-3 w-3 text-red-400" />
+          <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 ring-2 ring-dc-bg">
+            <MicOff className="h-3 w-3 text-white" />
           </div>
         )}
-        {p.isSpeaking && !p.isMuted && (
-          <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-fox-500 ring-2 ring-dc-sidebar">
+        {!p.isMuted && p.isSpeaking && (
+          <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-fox-500 ring-2 ring-dc-bg">
             <Mic className="h-3 w-3 text-white" />
           </div>
+        )}
+        {isMe && (
+          <div className="absolute -top-1 -left-1 rounded-full bg-dc-surface px-1.5 py-0.5 text-[9px] font-bold text-fox-400 ring-1 ring-fox-500/30">Sen</div>
         )}
       </div>
       <span className="max-w-[88px] truncate text-center text-xs font-semibold text-dc-text-secondary">
@@ -402,9 +425,10 @@ function ParticipantCard({ p }: { p: VoiceParticipant }) {
   );
 }
 
-function VoicePanel({ channelId, channelName, voice }: {
+function VoicePanel({ channelId, channelName, userId, voice }: {
   channelId: string;
   channelName: string;
+  userId: string;
   voice: ReturnType<typeof useVoiceChannel>;
 }) {
   const { participants, isConnected, isMuted, isDeafened, listenOnly, error, joinChannel, leaveChannel, toggleMute, toggleDeafen } = voice;
@@ -490,13 +514,44 @@ function VoicePanel({ channelId, channelName, voice }: {
       </div>
 
       {/* Participants grid */}
-      <div className="flex flex-1 flex-col items-center justify-center p-10">
+      <div className="flex flex-1 items-center justify-center overflow-auto p-8">
         {participants.length === 0 ? (
           <div className="text-center text-dc-muted-fg text-sm">Bağlanıyor...</div>
+        ) : participants.length === 1 ? (
+          /* Solo — large centered */
+          <div className="flex flex-col items-center gap-4">
+            <div className={`relative rounded-full overflow-hidden transition-all duration-150
+              ${participants[0].isSpeaking ? 'ring-8 ring-fox-400 shadow-[0_0_40px_rgba(232,114,42,0.5)] scale-105' : 'ring-4 ring-dc-surface/60'}`}
+              style={{ width: 140, height: 140 }}
+            >
+              {participants[0].avatarUrl ? (
+                <img src={participants[0].avatarUrl} crossOrigin="anonymous" className="h-full w-full object-cover" alt={participants[0].displayName} />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-fox-500 to-fox-700 text-4xl font-bold text-white">
+                  {participants[0].displayName.slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              {participants[0].isMuted && (
+                <div className="absolute -bottom-1 -right-1 flex h-8 w-8 items-center justify-center rounded-full bg-red-500 ring-2 ring-dc-bg">
+                  <MicOff className="h-4 w-4 text-white" />
+                </div>
+              )}
+            </div>
+            <div className="text-center">
+              <p className="font-bold text-dc-text-primary">{participants[0].displayName}</p>
+              <p className="text-xs text-dc-muted-fg mt-0.5">{participants[0].isSpeaking ? 'Konuşuyor' : participants[0].isMuted ? 'Sessizleştirildi' : 'Dinliyor'}</p>
+            </div>
+          </div>
         ) : (
-          <div className="flex flex-wrap justify-center gap-8">
+          /* Multi-user — responsive grid */
+          <div className={`grid gap-6 ${
+            participants.length === 2 ? 'grid-cols-2' :
+            participants.length <= 4 ? 'grid-cols-2 sm:grid-cols-3' :
+            participants.length <= 6 ? 'grid-cols-3' :
+            'grid-cols-4'
+          }`}>
             {participants.map(p => (
-              <ParticipantCard key={p.userId} p={p} />
+              <ParticipantCard key={p.userId} p={p} isMe={p.userId === userId} />
             ))}
           </div>
         )}
@@ -551,7 +606,7 @@ function VoicePanel({ channelId, channelName, voice }: {
 export default function DiscordApp() {
   const { user, profile, loading, signIn, signUp, signOut, updateProfile } = useAuth();
   const { servers, loading: serversLoading, createServer, joinServerByInvite, kickMember, banMember } = useServers(user?.id);
-  const voice = useVoiceChannel(user?.id ?? null, profile?.display_name ?? null);
+  const voice = useVoiceChannel(user?.id ?? null, profile?.display_name ?? null, profile?.avatar_url ?? null);
   const friends = useFriends(user?.id ?? null);
 
   const [activeServerId, setActiveServerId] = useState<string | null>(null);
@@ -773,9 +828,12 @@ export default function DiscordApp() {
                             ? <Megaphone className="h-4 w-4 flex-shrink-0" />
                             : <Hash className="h-4 w-4 flex-shrink-0" />}
                         <span className="flex-1 truncate text-left">{ch.name}</span>
-                        {/* Voice connected indicator */}
+                        {/* Voice connected indicator + count */}
                         {ch.type === 'voice' && voice.connectedChannelId === ch.id && (
-                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" />
+                          <div className="flex items-center gap-1">
+                            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" />
+                            <span className="text-[10px] font-bold text-green-400">{voice.participants.length}</span>
+                          </div>
                         )}
                       </button>
                     ))}
@@ -792,6 +850,7 @@ export default function DiscordApp() {
                 <div className="flex items-center gap-1.5">
                   <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" />
                   <span className="text-[11px] font-semibold text-green-400">Ses Aktif</span>
+                  <span className="text-[10px] text-green-400/60">· {voice.participants.length} kişi</span>
                 </div>
                 <button
                   onClick={voice.leaveChannel}
@@ -801,6 +860,23 @@ export default function DiscordApp() {
                 </button>
               </div>
               <p className="truncate text-[10px] text-dc-muted-fg">{connectedVoiceChannel.name}</p>
+              {/* Participant mini-avatars */}
+              {voice.participants.length > 0 && (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {voice.participants.map(p => (
+                    <div key={p.userId} className="relative" title={p.displayName}>
+                      {p.avatarUrl ? (
+                        <img src={p.avatarUrl} crossOrigin="anonymous" className={`h-6 w-6 rounded-full object-cover ring-1 ${p.isSpeaking ? 'ring-fox-400' : 'ring-dc-sidebar/40'}`} alt={p.displayName} />
+                      ) : (
+                        <div className={`flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-fox-500 to-fox-700 text-[9px] font-bold text-white ring-1 ${p.isSpeaking ? 'ring-fox-400' : 'ring-dc-sidebar/40'}`}>
+                          {p.displayName.slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                      {p.isMuted && <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-red-500 ring-1 ring-dc-sidebar" />}
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="mt-2 flex items-center gap-1">
                 <button
                   onClick={voice.toggleMute}
@@ -856,6 +932,7 @@ export default function DiscordApp() {
           <VoicePanel
             channelId={activeChannel.id}
             channelName={activeChannel.name}
+            userId={user.id}
             voice={voice}
           />
         ) : (
