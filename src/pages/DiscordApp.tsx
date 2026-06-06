@@ -1,8 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
-import { Hash, Volume2, Megaphone, Bell, Pin, Users, Search, Sparkles, ChevronDown, ChevronRight, Settings, Plus, Paperclip, Smile, Mic, Send, LogOut } from 'lucide-react';
+import {
+  Hash, Volume2, Megaphone, Bell, Pin, Users, Search, Sparkles,
+  ChevronDown, ChevronRight, Settings, Plus, Paperclip, Smile,
+  Mic, MicOff, Send, LogOut, Headphones, VolumeX, PhoneOff,
+} from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useServers } from '../hooks/useServers';
 import { useMessages, type Message } from '../hooks/useMessages';
+import { useVoiceChannel, type VoiceParticipant } from '../hooks/useVoiceChannel';
 import FoxLogo from '../components/discord/FoxLogo';
 import AuthPage from './AuthPage';
 import CreateServerModal from '../components/discord/CreateServerModal';
@@ -19,9 +24,9 @@ function formatTime(iso: string) {
   return d.toLocaleDateString('tr-TR', { day: 'numeric', month: 'short' });
 }
 
-function Avatar({ name, size = 'md', color }: { name: string; size?: 'sm' | 'md'; color?: string }) {
+function Avatar({ name, size = 'md', color }: { name: string; size?: 'sm' | 'md' | 'lg'; color?: string }) {
   const initials = name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-  const sz = size === 'sm' ? 'w-8 h-8 text-xs' : 'w-9 h-9 text-sm';
+  const sz = size === 'sm' ? 'w-8 h-8 text-xs' : size === 'lg' ? 'w-20 h-20 text-2xl' : 'w-9 h-9 text-sm';
   const bg = color ?? 'from-fox-500 to-fox-700';
   return (
     <div className={`${sz} rounded-full bg-gradient-to-br ${bg} flex flex-shrink-0 items-center justify-center font-bold text-white`}>
@@ -116,21 +121,6 @@ function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, 
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
-  if (channelType === 'voice') {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center bg-dc-bg">
-        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-dc-sidebar ring-2 ring-fox-500/30">
-          <Volume2 className="h-8 w-8 text-fox-400" />
-        </div>
-        <h2 className="mt-4 text-2xl font-bold text-dc-text-primary">{channelName}</h2>
-        <p className="mt-2 text-dc-muted-fg text-sm">Ses kanalı — bağlanmak için hazır</p>
-        <button className="mt-6 rounded-xl bg-fox-500 px-8 py-3 text-sm font-bold text-white shadow-lg shadow-fox-500/30 hover:bg-fox-600 active:scale-95 transition-all">
-          Kanala Katıl
-        </button>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-dc-bg">
       {/* Header */}
@@ -223,11 +213,149 @@ function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, 
   );
 }
 
+// ─── Voice Panel ──────────────────────────────────────────────────────────────
+
+function ParticipantCard({ p }: { p: VoiceParticipant }) {
+  return (
+    <div className="flex flex-col items-center gap-3">
+      <div className={`relative flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-fox-500 to-fox-700 text-xl font-bold text-white transition-all duration-150
+        ${p.isSpeaking ? 'ring-4 ring-fox-400 shadow-[0_0_24px_rgba(232,114,42,0.55)]' : 'ring-4 ring-dc-surface'}`}
+      >
+        {p.displayName.slice(0, 2).toUpperCase()}
+        {p.isMuted && (
+          <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-dc-bg ring-2 ring-dc-sidebar">
+            <MicOff className="h-3 w-3 text-red-400" />
+          </div>
+        )}
+        {p.isSpeaking && !p.isMuted && (
+          <div className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full bg-fox-500 ring-2 ring-dc-sidebar">
+            <Mic className="h-3 w-3 text-white" />
+          </div>
+        )}
+      </div>
+      <span className="max-w-[88px] truncate text-center text-xs font-semibold text-dc-text-secondary">
+        {p.displayName}
+      </span>
+    </div>
+  );
+}
+
+function VoicePanel({ channelId, channelName, voice }: {
+  channelId: string;
+  channelName: string;
+  voice: ReturnType<typeof useVoiceChannel>;
+}) {
+  const { participants, isConnected, isMuted, isDeafened, error, joinChannel, leaveChannel, toggleMute, toggleDeafen } = voice;
+
+  if (!isConnected) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-6 bg-dc-bg">
+        <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-dc-sidebar ring-2 ring-fox-500/20">
+          <Volume2 className="h-10 w-10 text-fox-400" />
+          <span className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-fox-500 shadow-lg">
+            <span className="text-[10px] font-bold text-white">SES</span>
+          </span>
+        </div>
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-dc-text-primary">{channelName}</h2>
+          <p className="mt-1.5 text-sm text-dc-muted-fg">Ses kanalı — bağlanmaya hazır</p>
+        </div>
+        {error && (
+          <div className="max-w-xs rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-center text-sm text-red-400">
+            {error}
+          </div>
+        )}
+        <button
+          onClick={() => joinChannel(channelId)}
+          className="rounded-xl bg-fox-500 px-10 py-3.5 text-sm font-bold text-white shadow-lg shadow-fox-500/30 hover:bg-fox-600 active:scale-95 transition-all"
+        >
+          Kanala Katıl
+        </button>
+        <p className="text-[11px] text-dc-muted-fg/50">Mikrofon izni gereklidir</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-1 flex-col overflow-hidden bg-dc-bg">
+      {/* Header */}
+      <div className="relative flex h-14 flex-shrink-0 items-center gap-3 px-4">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-green-500/15">
+          <Volume2 className="h-4 w-4 text-green-400" />
+        </div>
+        <div className="flex flex-col">
+          <h3 className="text-sm font-bold leading-tight text-dc-text-primary">{channelName}</h3>
+          <div className="flex items-center gap-1.5">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" />
+            <span className="text-[11px] text-green-400">{participants.length} kişi bağlı</span>
+          </div>
+        </div>
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-dc-surface" />
+      </div>
+
+      {/* Participants grid */}
+      <div className="flex flex-1 flex-col items-center justify-center p-10">
+        {participants.length === 0 ? (
+          <div className="text-center text-dc-muted-fg text-sm">Bağlanıyor...</div>
+        ) : (
+          <div className="flex flex-wrap justify-center gap-8">
+            {participants.map(p => (
+              <ParticipantCard key={p.userId} p={p} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Controls */}
+      <div className="flex items-center justify-center gap-4 pb-8 pt-4" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+        <Tooltip delayDuration={100}>
+          <TooltipTrigger asChild>
+            <button
+              onClick={toggleMute}
+              className={`flex h-13 w-13 h-12 w-12 items-center justify-center rounded-2xl transition-all
+                ${isMuted ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 ring-1 ring-red-500/30' : 'bg-dc-sidebar text-dc-text-primary hover:bg-dc-channel-hover'}`}
+            >
+              {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">{isMuted ? 'Mikrofon Aç' : 'Mikrofonu Kapat'}</TooltipContent>
+        </Tooltip>
+
+        <Tooltip delayDuration={100}>
+          <TooltipTrigger asChild>
+            <button
+              onClick={toggleDeafen}
+              className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all
+                ${isDeafened ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30 ring-1 ring-red-500/30' : 'bg-dc-sidebar text-dc-text-primary hover:bg-dc-channel-hover'}`}
+            >
+              {isDeafened ? <VolumeX className="h-5 w-5" /> : <Headphones className="h-5 w-5" />}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">{isDeafened ? 'Sesi Aç' : 'Sesi Kapat'}</TooltipContent>
+        </Tooltip>
+
+        <Tooltip delayDuration={100}>
+          <TooltipTrigger asChild>
+            <button
+              onClick={leaveChannel}
+              className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-500/20 text-red-400 ring-1 ring-red-500/30 hover:bg-red-500/30 transition-all"
+            >
+              <PhoneOff className="h-5 w-5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="top">Kanaldan Ayrıl</TooltipContent>
+        </Tooltip>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
 export default function DiscordApp() {
   const { user, profile, loading, signIn, signUp, signOut } = useAuth();
   const { servers, loading: serversLoading, createServer, joinServerByInvite } = useServers(user?.id);
+  const voice = useVoiceChannel(user?.id ?? null, profile?.display_name ?? null);
 
   const [activeServerId, setActiveServerId] = useState<string | null>(null);
   const [activeChannelId, setActiveChannelId] = useState<string | null>(null);
@@ -269,6 +397,9 @@ export default function DiscordApp() {
 
   const activeServer = servers.find(s => s.id === activeServerId);
   const activeChannel = activeServer?.categories.flatMap(c => c.channels).find(ch => ch.id === activeChannelId);
+  const connectedVoiceChannel = voice.connectedChannelId
+    ? activeServer?.categories.flatMap(c => c.channels).find(ch => ch.id === voice.connectedChannelId)
+    : null;
 
   const toggleCat = (id: string) => setCollapsedCats(prev => {
     const next = new Set(prev);
@@ -388,8 +519,16 @@ export default function DiscordApp() {
                         `}
                       >
                         {activeChannelId === ch.id && <span className="absolute left-0 top-1/2 h-5 w-1 -translate-y-1/2 rounded-r-full bg-fox-400 shadow-[0_0_6px_1px_rgba(232,114,42,0.6)]" />}
-                        {ch.type === 'voice' ? <Volume2 className="h-4 w-4 flex-shrink-0" /> : ch.type === 'announcement' ? <Megaphone className="h-4 w-4 flex-shrink-0" /> : <Hash className="h-4 w-4 flex-shrink-0" />}
+                        {ch.type === 'voice'
+                          ? <Volume2 className="h-4 w-4 flex-shrink-0" />
+                          : ch.type === 'announcement'
+                            ? <Megaphone className="h-4 w-4 flex-shrink-0" />
+                            : <Hash className="h-4 w-4 flex-shrink-0" />}
                         <span className="flex-1 truncate text-left">{ch.name}</span>
+                        {/* Voice connected indicator */}
+                        {ch.type === 'voice' && voice.connectedChannelId === ch.id && (
+                          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" />
+                        )}
                       </button>
                     ))}
                   </div>
@@ -397,6 +536,39 @@ export default function DiscordApp() {
               </div>
             ))}
           </div>
+
+          {/* Voice connected bar */}
+          {voice.isConnected && connectedVoiceChannel && (
+            <div className="mx-2 mb-1 rounded-xl bg-green-500/10 px-3 py-2.5" style={{ border: '1px solid rgba(34,197,94,0.15)' }}>
+              <div className="mb-1.5 flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" />
+                  <span className="text-[11px] font-semibold text-green-400">Ses Aktif</span>
+                </div>
+                <button
+                  onClick={voice.leaveChannel}
+                  className="flex h-5 w-5 items-center justify-center rounded text-dc-muted-fg hover:text-red-400 transition-colors"
+                >
+                  <PhoneOff className="h-3 w-3" />
+                </button>
+              </div>
+              <p className="truncate text-[10px] text-dc-muted-fg">{connectedVoiceChannel.name}</p>
+              <div className="mt-2 flex items-center gap-1">
+                <button
+                  onClick={voice.toggleMute}
+                  className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${voice.isMuted ? 'text-red-400' : 'text-dc-muted-fg hover:text-dc-text-primary'}`}
+                >
+                  {voice.isMuted ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+                </button>
+                <button
+                  onClick={voice.toggleDeafen}
+                  className={`flex h-6 w-6 items-center justify-center rounded-lg transition-colors ${voice.isDeafened ? 'text-red-400' : 'text-dc-muted-fg hover:text-dc-text-primary'}`}
+                >
+                  {voice.isDeafened ? <VolumeX className="h-3.5 w-3.5" /> : <Headphones className="h-3.5 w-3.5" />}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* User panel */}
           <div className="flex flex-shrink-0 items-center gap-2 p-2" style={{ borderTop: '1px solid rgba(255,255,255,0.05)' }}>
@@ -416,15 +588,23 @@ export default function DiscordApp() {
 
       {/* Main content */}
       {activeServer && activeChannel && user ? (
-        <ChatPanel
-          channelId={activeChannel.id}
-          channelName={activeChannel.name}
-          channelType={activeChannel.type}
-          channelTopic={activeChannel.topic}
-          userId={user.id}
-          showMembers={showMembers}
-          onToggleMembers={() => setShowMembers(v => !v)}
-        />
+        activeChannel.type === 'voice' ? (
+          <VoicePanel
+            channelId={activeChannel.id}
+            channelName={activeChannel.name}
+            voice={voice}
+          />
+        ) : (
+          <ChatPanel
+            channelId={activeChannel.id}
+            channelName={activeChannel.name}
+            channelType={activeChannel.type}
+            channelTopic={activeChannel.topic}
+            userId={user.id}
+            showMembers={showMembers}
+            onToggleMembers={() => setShowMembers(v => !v)}
+          />
+        )
       ) : (
         <div className="flex flex-1 flex-col items-center justify-center bg-dc-bg gap-4">
           {!serversLoading && servers.length === 0 ? (
@@ -446,7 +626,7 @@ export default function DiscordApp() {
       )}
 
       {/* Members sidebar */}
-      {activeServer && showMembers && (
+      {activeServer && showMembers && activeChannel?.type !== 'voice' && (
         <div className="flex h-full w-56 flex-col bg-dc-sidebar">
           <div className="flex h-14 flex-shrink-0 items-center justify-between px-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
             <div className="flex flex-col">
