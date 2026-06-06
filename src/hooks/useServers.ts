@@ -48,6 +48,15 @@ export interface Server {
   members: ServerMember[];
 }
 
+export type BannedMember = {
+  id: string;
+  server_id: string;
+  user_id: string;
+  reason: string | null;
+  banned_at: string;
+  profile: { id: string; username: string; display_name: string; avatar_url: string | null };
+};
+
 export function useServers(userId: string | undefined) {
   const [servers, setServers] = useState<Server[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,7 +65,6 @@ export function useServers(userId: string | undefined) {
     if (!userId) { setServers([]); setLoading(false); return; }
     setLoading(true);
     try {
-      // Get server IDs user belongs to
       const { data: memberships } = await supabase
         .from('server_members')
         .select('server_id')
@@ -78,7 +86,6 @@ export function useServers(userId: string | undefined) {
           ...cat,
           channels: (channelsRes.data ?? []).filter(ch => ch.category_id === cat.id),
         }));
-        // Channels without categories
         const uncategorized = (channelsRes.data ?? []).filter(
           ch => ch.server_id === s.id && !ch.category_id
         );
@@ -104,7 +111,6 @@ export function useServers(userId: string | undefined) {
 
   const createServer = async (name: string, color: string, userId: string) => {
     try {
-      // 1. Create server
       const { data: server, error: serverErr } = await supabase
         .from('servers')
         .insert({ name, color, owner_id: userId })
@@ -114,19 +120,16 @@ export function useServers(userId: string | undefined) {
       if (serverErr) return { error: serverErr };
       if (!server) return { error: new Error('Sunucu oluşturulamadı.') };
 
-      // 2. Add owner as member
       const { error: memberErr } = await supabase
         .from('server_members')
         .insert({ server_id: server.id, user_id: userId, role: 'owner' });
       if (memberErr) console.warn('server_members insert error:', memberErr.message);
 
-      // 3. Create default categories
       const [catRes1, catRes2] = await Promise.all([
         supabase.from('channel_categories').insert({ server_id: server.id, name: 'GENEL', position: 0 }).select().single(),
         supabase.from('channel_categories').insert({ server_id: server.id, name: 'SES', position: 1 }).select().single(),
       ]);
 
-      // 4. Create default channels
       const channelsToInsert = [];
       if (catRes1.data) {
         channelsToInsert.push(
@@ -187,5 +190,59 @@ export function useServers(userId: string | undefined) {
     await supabase.from('server_bans').delete().eq('server_id', serverId).eq('user_id', userId);
   };
 
-  return { servers, loading, refetch: fetchServers, createServer, joinServerByInvite, kickMember, banMember, unbanMember };
+  const updateServer = async (serverId: string, updates: { name?: string; color?: string }) => {
+    const { error } = await supabase.from('servers').update(updates).eq('id', serverId);
+    if (!error) await fetchServers();
+    return { error };
+  };
+
+  const updateMemberRole = async (serverId: string, userId: string, role: 'admin' | 'member') => {
+    const { error } = await supabase
+      .from('server_members')
+      .update({ role })
+      .eq('server_id', serverId)
+      .eq('user_id', userId);
+    if (!error) await fetchServers();
+    return { error };
+  };
+
+  const getBannedMembers = async (serverId: string): Promise<BannedMember[]> => {
+    const { data } = await supabase
+      .from('server_bans')
+      .select('*, profile:profiles(id, username, display_name, avatar_url)')
+      .eq('server_id', serverId);
+    return (data ?? []) as BannedMember[];
+  };
+
+  const deleteServer = async (serverId: string) => {
+    const { error } = await supabase.from('servers').delete().eq('id', serverId);
+    if (!error) await fetchServers();
+    return { error };
+  };
+
+  const leaveServer = async (serverId: string, userId: string) => {
+    const { error } = await supabase
+      .from('server_members')
+      .delete()
+      .eq('server_id', serverId)
+      .eq('user_id', userId);
+    if (!error) await fetchServers();
+    return { error };
+  };
+
+  return {
+    servers,
+    loading,
+    refetch: fetchServers,
+    createServer,
+    joinServerByInvite,
+    kickMember,
+    banMember,
+    unbanMember,
+    updateServer,
+    updateMemberRole,
+    getBannedMembers,
+    deleteServer,
+    leaveServer,
+  };
 }

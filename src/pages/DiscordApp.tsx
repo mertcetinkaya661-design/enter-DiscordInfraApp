@@ -15,6 +15,7 @@ import FoxLogo from '../components/discord/FoxLogo';
 import AuthPage from './AuthPage';
 import CreateServerModal from '../components/discord/CreateServerModal';
 import ProfileSettingsModal from '../components/discord/ProfileSettingsModal';
+import ServerSettingsModal from '../components/discord/ServerSettingsModal';
 import FriendsPanel from '../components/discord/FriendsPanel';
 import { EmojiPicker } from '../components/discord/EmojiPicker';
 import { supabase } from '../integrations/supabase/client';
@@ -822,7 +823,7 @@ function VoicePanel({ channelId, channelName, userId, voice }: {
 
 export default function DiscordApp() {
   const { user, profile, loading, signIn, signUp, signOut, updateProfile } = useAuth();
-  const { servers, loading: serversLoading, createServer, joinServerByInvite, kickMember, banMember } = useServers(user?.id);
+  const { servers, loading: serversLoading, createServer, joinServerByInvite, kickMember, banMember, unbanMember, updateServer, updateMemberRole, getBannedMembers, deleteServer, leaveServer } = useServers(user?.id);
   const voice = useVoiceChannel(user?.id ?? null, profile?.display_name ?? null, profile?.avatar_url ?? null);
   const friends = useFriends(user?.id ?? null);
 
@@ -831,6 +832,7 @@ export default function DiscordApp() {
   const [showMembers, setShowMembers] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
+  const [showServerSettings, setShowServerSettings] = useState(false);
   const [showFriends, setShowFriends] = useState(false);
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
   const [copiedInvite, setCopiedInvite] = useState(false);
@@ -984,7 +986,9 @@ export default function DiscordApp() {
               <h2 className="truncate text-sm font-bold text-dc-text-primary leading-tight">{activeServer.name}</h2>
               <span className="text-[10px] text-dc-muted-fg">{activeServer.members.length} üye</span>
             </div>
-            <button className="flex h-7 w-7 items-center justify-center rounded-lg text-dc-muted-fg transition-all hover:bg-white/10 hover:text-dc-text-primary">
+            <button
+              onClick={() => setShowServerSettings(true)}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-dc-muted-fg transition-all hover:bg-white/10 hover:text-dc-text-primary">
               <Settings className="h-4 w-4" />
             </button>
           </div>
@@ -1125,6 +1129,13 @@ export default function DiscordApp() {
                 <span className="truncate text-sm font-bold text-dc-text-primary leading-tight">{profile.display_name}</span>
                 <span className="truncate text-[10px] text-dc-muted-fg">@{profile.username}</span>
               </div>
+            </button>
+            <button
+              onClick={() => setShowProfileSettings(true)}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-dc-muted-fg hover:bg-white/10 hover:text-dc-text-primary transition-all"
+              title="Ayarlar"
+            >
+              <Settings className="h-3.5 w-3.5" />
             </button>
             <button onClick={signOut} className="flex h-7 w-7 items-center justify-center rounded-lg text-dc-muted-fg hover:bg-white/10 hover:text-red-400 transition-all">
               <LogOut className="h-3.5 w-3.5" />
@@ -1275,6 +1286,23 @@ export default function DiscordApp() {
           profile={profile}
           onClose={() => setShowProfileSettings(false)}
           onUpdate={updateProfile}
+        />
+      )}
+
+      {/* Server settings modal */}
+      {showServerSettings && activeServer && (
+        <ServerSettingsModal
+          server={activeServer}
+          currentUserId={user.id}
+          onClose={() => setShowServerSettings(false)}
+          onUpdateServer={updateServer}
+          onUpdateMemberRole={updateMemberRole}
+          onKickMember={kickMember}
+          onBanMember={banMember}
+          onUnbanMember={unbanMember}
+          onGetBannedMembers={getBannedMembers}
+          onDeleteServer={deleteServer}
+          onLeaveServer={leaveServer}
         />
       )}
 
