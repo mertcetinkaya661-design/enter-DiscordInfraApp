@@ -3109,13 +3109,331 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      channel_categories: {
+        Row: {
+          id: string
+          name: string
+          position: number
+          server_id: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          position?: number
+          server_id: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          position?: number
+          server_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channel_categories_server_id_fkey"
+            columns: ["server_id"]
+            referencedRelation: "servers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      channels: {
+        Row: {
+          category_id: string | null
+          created_at: string
+          id: string
+          name: string
+          position: number
+          server_id: string
+          topic: string | null
+          type: string
+        }
+        Insert: {
+          category_id?: string | null
+          created_at?: string
+          id?: string
+          name: string
+          position?: number
+          server_id: string
+          topic?: string | null
+          type?: string
+        }
+        Update: {
+          category_id?: string | null
+          created_at?: string
+          id?: string
+          name?: string
+          position?: number
+          server_id?: string
+          topic?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "channels_category_id_fkey"
+            columns: ["category_id"]
+            referencedRelation: "channel_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "channels_server_id_fkey"
+            columns: ["server_id"]
+            referencedRelation: "servers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      direct_conversation_members: {
+        Row: {
+          conversation_id: string
+          user_id: string
+        }
+        Insert: {
+          conversation_id: string
+          user_id: string
+        }
+        Update: {
+          conversation_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "direct_conversation_members_conversation_id_fkey"
+            columns: ["conversation_id"]
+            referencedRelation: "direct_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "direct_conversation_members_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      direct_conversations: {
+        Row: {
+          created_at: string
+          id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+        }
+        Relationships: []
+      }
+      direct_messages: {
+        Row: {
+          author_id: string | null
+          content: string
+          conversation_id: string
+          created_at: string
+          edited_at: string | null
+          id: string
+        }
+        Insert: {
+          author_id?: string | null
+          content: string
+          conversation_id: string
+          created_at?: string
+          edited_at?: string | null
+          id?: string
+        }
+        Update: {
+          author_id?: string | null
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          edited_at?: string | null
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "direct_messages_author_id_fkey"
+            columns: ["author_id"]
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "direct_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            referencedRelation: "direct_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      messages: {
+        Row: {
+          author_id: string | null
+          channel_id: string
+          content: string
+          created_at: string
+          edited_at: string | null
+          id: string
+        }
+        Insert: {
+          author_id?: string | null
+          channel_id: string
+          content: string
+          created_at?: string
+          edited_at?: string | null
+          id?: string
+        }
+        Update: {
+          author_id?: string | null
+          channel_id?: string
+          content?: string
+          created_at?: string
+          edited_at?: string | null
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messages_author_id_fkey"
+            columns: ["author_id"]
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "messages_channel_id_fkey"
+            columns: ["channel_id"]
+            referencedRelation: "channels"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          custom_status: string | null
+          display_name: string
+          id: string
+          status: string
+          username: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          custom_status?: string | null
+          display_name: string
+          id: string
+          status?: string
+          username: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          custom_status?: string | null
+          display_name?: string
+          id?: string
+          status?: string
+          username?: string
+        }
+        Relationships: []
+      }
+      server_members: {
+        Row: {
+          id: string
+          joined_at: string
+          nickname: string | null
+          role: string
+          server_id: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          joined_at?: string
+          nickname?: string | null
+          role?: string
+          server_id: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          joined_at?: string
+          nickname?: string | null
+          role?: string
+          server_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "server_members_server_id_fkey"
+            columns: ["server_id"]
+            referencedRelation: "servers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "server_members_user_id_fkey"
+            columns: ["user_id"]
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      servers: {
+        Row: {
+          color: string
+          created_at: string
+          icon_url: string | null
+          id: string
+          invite_code: string
+          name: string
+          owner_id: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          icon_url?: string | null
+          id?: string
+          invite_code?: string
+          name: string
+          owner_id: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          icon_url?: string | null
+          id?: string
+          invite_code?: string
+          name?: string
+          owner_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "servers_owner_id_fkey"
+            columns: ["owner_id"]
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_user_server_ids: {
+        Args: { uid: string }
+        Returns: string[]
+      }
+      is_dm_participant: {
+        Args: { cid: string; uid: string }
+        Returns: boolean
+      }
+      is_server_member: {
+        Args: { sid: string; uid: string }
+        Returns: boolean
+      }
+      message_server_id: {
+        Args: { channel: string }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never
