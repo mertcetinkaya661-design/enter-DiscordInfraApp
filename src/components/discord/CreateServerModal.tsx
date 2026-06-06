@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { X } from 'lucide-react';
-import FoxLogo from '../components/discord/FoxLogo';
+import FoxLogo from './FoxLogo';
 
 interface CreateServerModalProps {
   onClose: () => void;
