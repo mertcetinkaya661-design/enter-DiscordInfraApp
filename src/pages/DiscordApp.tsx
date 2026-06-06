@@ -3,7 +3,7 @@ import {
   Hash, Volume2, Megaphone, Bell, Pin, Users, Search, Sparkles,
   ChevronDown, ChevronRight, Settings, Plus, Paperclip, Smile,
   Mic, MicOff, Send, LogOut, Headphones, VolumeX, PhoneOff, Copy, Check,
-  UserPlus, Shield, UserX, Bot, X as XIcon,
+  UserPlus, Shield, UserX, Bot, X as XIcon, FileText, Download, MonitorSpeaker,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useServers } from '../hooks/useServers';
@@ -16,6 +16,8 @@ import AuthPage from './AuthPage';
 import CreateServerModal from '../components/discord/CreateServerModal';
 import ProfileSettingsModal from '../components/discord/ProfileSettingsModal';
 import FriendsPanel from '../components/discord/FriendsPanel';
+import { EmojiPicker } from '../components/discord/EmojiPicker';
+import { supabase } from '../integrations/supabase/client';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -49,6 +51,52 @@ function Avatar({ name, size = 'md', color, avatarUrl }: { name: string; size?: 
 
 // ─── Message bubble ───────────────────────────────────────────────────────────
 
+function AttachmentView({ url, type, name, size }: { url: string; type: string | null; name: string | null; size: number | null }) {
+  const isImage = type === 'image';
+  const isAudio = type === 'audio';
+  const sizeLabel = size ? (size > 1048576 ? `${(size / 1048576).toFixed(1)} MB` : `${Math.round(size / 1024)} KB`) : null;
+
+  if (isImage) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer" className="mt-2 block">
+        <img
+          src={url}
+          crossOrigin="anonymous"
+          alt={name ?? 'resim'}
+          className="max-h-64 max-w-xs rounded-xl object-cover ring-1 ring-dc-surface/40 hover:opacity-90 transition-opacity"
+        />
+      </a>
+    );
+  }
+
+  if (isAudio) {
+    return (
+      <div className="mt-2">
+        <audio controls src={url} className="max-w-xs rounded-lg" />
+      </div>
+    );
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      download={name ?? true}
+      className="mt-2 flex max-w-xs items-center gap-3 rounded-xl bg-dc-bg px-4 py-3 ring-1 ring-dc-surface/40 hover:ring-fox-500/40 transition-all group"
+    >
+      <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-fox-500/15">
+        <FileText className="h-4 w-4 text-fox-400" />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-dc-text-primary group-hover:text-fox-300 transition-colors">{name ?? 'dosya'}</p>
+        {sizeLabel && <p className="text-[11px] text-dc-muted-fg">{sizeLabel}</p>}
+      </div>
+      <Download className="h-4 w-4 flex-shrink-0 text-dc-muted-fg group-hover:text-fox-400 transition-colors" />
+    </a>
+  );
+}
+
 function MessageBubble({ message, isOwn, showHeader, isBot, onDelete }: {
   message: Message;
   isOwn: boolean;
@@ -75,6 +123,9 @@ function MessageBubble({ message, isOwn, showHeader, isBot, onDelete }: {
               </button>
             )}
           </div>
+          {message.attachment_url && (
+            <AttachmentView url={message.attachment_url} type={message.attachment_type} name={message.attachment_name} size={message.attachment_size} />
+          )}
         </div>
       </div>
     );
@@ -105,6 +156,9 @@ function MessageBubble({ message, isOwn, showHeader, isBot, onDelete }: {
           {message.content}
           {message.edited_at && <span className="ml-1 text-[10px] text-dc-muted-fg">(düzenlendi)</span>}
         </div>
+        {message.attachment_url && (
+          <AttachmentView url={message.attachment_url} type={message.attachment_type} name={message.attachment_name} size={message.attachment_size} />
+        )}
       </div>
     </div>
   );
@@ -124,6 +178,10 @@ function processBotCommand(cmd: string, channelId: string): Message | null {
     edited_at: null,
     created_at: new Date().toISOString(),
     author: botAuthor,
+    attachment_url: null,
+    attachment_type: null,
+    attachment_name: null,
+    attachment_size: null,
   });
   switch (command) {
     case '/help': return makeMsg('**FIX Bot Komutları:**\n`/help` - Bu yardım mesajı\n`/roll [maks]` - Zar at\n`/coin` - Para at\n`/shrug` - ¯\\_(ツ)_/¯\n`/serverinfo` - Sunucu bilgisi');
@@ -159,8 +217,12 @@ function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Message[]>([]);
   const [searching, setSearching] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Request notification permission once
   useEffect(() => {
@@ -192,14 +254,47 @@ function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, 
 
   const handleSend = async () => {
     const content = input.trim();
-    if (!content) return;
+    if (!content && !pendingFile) return;
     setInput('');
-    if (content.startsWith('/')) {
+
+    if (content.startsWith('/') && !pendingFile) {
       const botMsg = processBotCommand(content, channelId);
       if (botMsg) setLocalBotMessages(prev => [...prev, botMsg]);
       return;
     }
-    await sendMessage(channelId, userId, content);
+
+    let attachment: { url: string; type: string; name: string; size: number } | undefined;
+
+    if (pendingFile) {
+      setUploading(true);
+      const path = `${userId}/${Date.now()}_${pendingFile.name}`;
+      const { data, error: uploadError } = await supabase.storage
+        .from('attachments')
+        .upload(path, pendingFile, { upsert: false });
+
+      if (!uploadError && data) {
+        const { data: { publicUrl } } = supabase.storage
+          .from('attachments')
+          .getPublicUrl(data.path);
+
+        const mimeType = pendingFile.type;
+        const attachType = mimeType.startsWith('image/') ? 'image'
+          : mimeType.startsWith('video/') ? 'video'
+          : mimeType.startsWith('audio/') ? 'audio'
+          : 'file';
+
+        attachment = {
+          url: publicUrl,
+          type: attachType,
+          name: pendingFile.name,
+          size: pendingFile.size,
+        };
+      }
+      setPendingFile(null);
+      setUploading(false);
+    }
+
+    await sendMessage(channelId, userId, content || ' ', attachment);
   };
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -302,24 +397,85 @@ function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, 
 
       {/* Input */}
       <div className="px-4 pb-5 pt-1">
-        <div className={`flex items-end gap-3 rounded-2xl px-4 py-3 transition-all duration-200 ${focused ? 'bg-dc-input ring-1 ring-fox-500/40 shadow-lg shadow-fox-500/10' : 'bg-dc-input'}`}>
-          <button className="mb-0.5 text-dc-muted-fg hover:text-fox-400 transition-colors"><Paperclip className="h-5 w-5" /></button>
+        {/* Pending file preview */}
+        {pendingFile && (
+          <div className="mb-2 flex items-center gap-3 rounded-xl bg-dc-sidebar px-4 py-2.5 ring-1 ring-fox-500/30">
+            {pendingFile.type.startsWith('image/') ? (
+              <img
+                src={URL.createObjectURL(pendingFile)}
+                alt={pendingFile.name}
+                className="h-10 w-10 rounded-lg object-cover flex-shrink-0"
+              />
+            ) : (
+              <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-fox-500/15">
+                <FileText className="h-5 w-5 text-fox-400" />
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-dc-text-primary">{pendingFile.name}</p>
+              <p className="text-[11px] text-dc-muted-fg">
+                {pendingFile.size > 1048576 ? `${(pendingFile.size / 1048576).toFixed(1)} MB` : `${Math.round(pendingFile.size / 1024)} KB`}
+              </p>
+            </div>
+            <button onClick={() => setPendingFile(null)} className="text-dc-muted-fg hover:text-red-400 transition-colors">
+              <XIcon className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        <div className={`relative flex items-end gap-3 rounded-2xl px-4 py-3 transition-all duration-200 ${focused ? 'bg-dc-input ring-1 ring-fox-500/40 shadow-lg shadow-fox-500/10' : 'bg-dc-input'}`}>
+          {/* Hidden file input */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="hidden"
+            accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip,.rar"
+            onChange={e => { const f = e.target.files?.[0]; if (f) setPendingFile(f); e.target.value = ''; }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className={`mb-0.5 transition-colors ${pendingFile ? 'text-fox-400' : 'text-dc-muted-fg hover:text-fox-400'}`}
+          >
+            <Paperclip className="h-5 w-5" />
+          </button>
           <textarea
             value={input}
             onChange={handleInputChange}
             onKeyDown={handleKey}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
-            placeholder={input.startsWith('/') ? 'Komut gir...' : `${channelName} kanalına yaz...`}
+            placeholder={uploading ? 'Yükleniyor...' : input.startsWith('/') ? 'Komut gir...' : `${channelName} kanalına yaz...`}
             rows={1}
-            className="flex-1 resize-none bg-transparent text-sm text-dc-text-primary placeholder:text-dc-muted-fg/60 focus:outline-none"
+            disabled={uploading}
+            className="flex-1 resize-none bg-transparent text-sm text-dc-text-primary placeholder:text-dc-muted-fg/60 focus:outline-none disabled:opacity-50"
             style={{ maxHeight: '120px', minHeight: '22px' }}
           />
-          <div className="mb-0.5 flex items-center gap-1.5">
-            <button className="text-dc-muted-fg hover:text-fox-400 transition-colors"><Smile className="h-5 w-5" /></button>
-            {input.trim() ? (
-              <button onClick={handleSend} className="flex h-8 w-8 items-center justify-center rounded-xl bg-fox-500 text-white shadow-md shadow-fox-500/30 hover:bg-fox-600 active:scale-95 transition-all">
-                {input.startsWith('/') ? <Bot className="h-3.5 w-3.5" /> : <Send className="h-3.5 w-3.5" />}
+          <div className="relative mb-0.5 flex items-center gap-1.5">
+            <button
+              onClick={() => setShowEmojiPicker(v => !v)}
+              className={`transition-colors ${showEmojiPicker ? 'text-fox-400' : 'text-dc-muted-fg hover:text-fox-400'}`}
+            >
+              <Smile className="h-5 w-5" />
+            </button>
+            {showEmojiPicker && (
+              <EmojiPicker
+                onSelect={emoji => { setInput(prev => prev + emoji); setShowEmojiPicker(false); }}
+                onClose={() => setShowEmojiPicker(false)}
+              />
+            )}
+            {(input.trim() || pendingFile) ? (
+              <button
+                onClick={handleSend}
+                disabled={uploading}
+                className="flex h-8 w-8 items-center justify-center rounded-xl bg-fox-500 text-white shadow-md shadow-fox-500/30 hover:bg-fox-600 active:scale-95 transition-all disabled:opacity-50"
+              >
+                {uploading ? (
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                ) : input.startsWith('/') && !pendingFile ? (
+                  <Bot className="h-3.5 w-3.5" />
+                ) : (
+                  <Send className="h-3.5 w-3.5" />
+                )}
               </button>
             ) : (
               <button className="text-dc-muted-fg hover:text-fox-400 transition-colors"><Mic className="h-5 w-5" /></button>
@@ -433,6 +589,31 @@ function VoicePanel({ channelId, channelName, userId, voice }: {
 }) {
   const { participants, isConnected, isMuted, isDeafened, listenOnly, error, joinChannel, leaveChannel, toggleMute, toggleDeafen } = voice;
   const micDenied = error === 'MIC_DENIED';
+  const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedSpeaker, setSelectedSpeaker] = useState('default');
+  const [showSpeakerMenu, setShowSpeakerMenu] = useState(false);
+
+  // Enumerate audio output devices when connected
+  useEffect(() => {
+    if (!isConnected) return;
+    navigator.mediaDevices?.enumerateDevices().then(devices => {
+      setOutputDevices(devices.filter(d => d.kind === 'audiooutput'));
+    }).catch(() => {});
+  }, [isConnected]);
+
+  // Apply speaker selection to all audio elements
+  const applySpeaker = useCallback(async (deviceId: string) => {
+    setSelectedSpeaker(deviceId);
+    setShowSpeakerMenu(false);
+    // Access internal audio elements via the voice hook ref (best-effort)
+    const audios = document.querySelectorAll('audio[data-voice]');
+    for (const el of audios) {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (el as any).setSinkId?.(deviceId);
+      } catch { /* browser may not support */ }
+    }
+  }, []);
 
   if (!isConnected) {
     return (
@@ -596,6 +777,42 @@ function VoicePanel({ channelId, channelName, userId, voice }: {
           </TooltipTrigger>
           <TooltipContent side="top">Kanaldan Ayrıl</TooltipContent>
         </Tooltip>
+
+        {/* Speaker selector */}
+        {outputDevices.length > 1 && (
+          <div className="relative">
+            <Tooltip delayDuration={100}>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => setShowSpeakerMenu(v => !v)}
+                  className={`flex h-12 w-12 items-center justify-center rounded-2xl transition-all
+                    ${showSpeakerMenu ? 'bg-fox-500/20 text-fox-400 ring-1 ring-fox-500/30' : 'bg-dc-sidebar text-dc-text-primary hover:bg-dc-channel-hover'}`}
+                >
+                  <MonitorSpeaker className="h-5 w-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">Hoparlör Seç</TooltipContent>
+            </Tooltip>
+            {showSpeakerMenu && (
+              <div className="absolute bottom-full mb-2 right-0 z-50 min-w-[200px] rounded-xl bg-dc-sidebar ring-1 ring-dc-surface/60 shadow-2xl overflow-hidden">
+                <div className="px-3 py-2 border-b border-dc-surface/40">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-dc-muted-fg">Hoparlör</p>
+                </div>
+                {outputDevices.map(device => (
+                  <button
+                    key={device.deviceId}
+                    onClick={() => applySpeaker(device.deviceId)}
+                    className={`flex w-full items-center gap-2 px-3 py-2.5 text-sm transition-colors hover:bg-dc-channel-hover/60 ${selectedSpeaker === device.deviceId ? 'text-fox-400' : 'text-dc-text-secondary'}`}
+                  >
+                    <Volume2 className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span className="truncate">{device.label || 'Varsayılan Hoparlör'}</span>
+                    {selectedSpeaker === device.deviceId && <Check className="ml-auto h-3.5 w-3.5 flex-shrink-0" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

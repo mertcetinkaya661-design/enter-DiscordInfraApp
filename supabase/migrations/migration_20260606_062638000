@@ -1,0 +1,27 @@
+-- Add file attachment columns to messages
+alter table messages
+  add column if not exists attachment_url  text null,
+  add column if not exists attachment_type text null,  -- 'image' | 'video' | 'audio' | 'file'
+  add column if not exists attachment_name text null,
+  add column if not exists attachment_size int  null;
+
+-- Create attachments storage bucket (public, 50 MB limit)
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('attachments', 'attachments', true, 52428800)
+on conflict (id) do nothing;
+
+-- RLS for attachments bucket
+create policy "Authenticated users can upload attachments"
+  on storage.objects for insert
+  to authenticated
+  with check (bucket_id = 'attachments');
+
+create policy "Attachments are publicly readable"
+  on storage.objects for select
+  to public
+  using (bucket_id = 'attachments');
+
+create policy "Users can delete own attachments"
+  on storage.objects for delete
+  to authenticated
+  using (bucket_id = 'attachments' and auth.uid()::text = (storage.foldername(name))[1]);

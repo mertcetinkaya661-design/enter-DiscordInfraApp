@@ -16,6 +16,10 @@ export interface Message {
   edited_at: string | null;
   created_at: string;
   author: MessageAuthor | null;
+  attachment_url: string | null;
+  attachment_type: string | null;
+  attachment_name: string | null;
+  attachment_size: number | null;
 }
 
 export interface MessageSearchResult {
@@ -111,10 +115,23 @@ export function useMessages(channelId: string | null, channelName?: string) {
     };
   }, [channelId, fetchMessages]);
 
-  const sendMessage = async (channelId: string, authorId: string, content: string) => {
+  const sendMessage = async (
+    channelId: string,
+    authorId: string,
+    content: string,
+    attachment?: { url: string; type: string; name: string; size: number },
+  ) => {
     const { error } = await supabase
       .from('messages')
-      .insert({ channel_id: channelId, author_id: authorId, content });
+      .insert({
+        channel_id: channelId,
+        author_id: authorId,
+        content,
+        attachment_url: attachment?.url ?? null,
+        attachment_type: attachment?.type ?? null,
+        attachment_name: attachment?.name ?? null,
+        attachment_size: attachment?.size ?? null,
+      });
     return { error };
   };
 
