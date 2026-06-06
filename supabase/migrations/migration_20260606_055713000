@@ -1,0 +1,29 @@
+-- Drop the problematic trigger and keep a minimal silent version
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+
+-- Minimal trigger that silently fails (never blocks auth)
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  INSERT INTO public.profiles (id, username, display_name)
+  VALUES (
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data->>'username', split_part(NEW.email, '@', 1)),
+    COALESCE(NEW.raw_user_meta_data->>'display_name', split_part(NEW.email, '@', 1))
+  )
+  ON CONFLICT DO NOTHING;
+  RETURN NEW;
+EXCEPTION WHEN OTHERS THEN
+  RETURN NEW; -- Never block signup
+END;
+$$;
+
+-- Recreate trigger
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+
+-- Allow authenticated users to insert their own profile (for frontend upsert)
+DROP POLICY IF EXISTS profiles_insert ON public.profiles;
+CREATE POLICY profiles_insert ON public.profiles
+  FOR INSERT WITH CHECK (auth.uid() = id OR auth.uid() IS NULL);

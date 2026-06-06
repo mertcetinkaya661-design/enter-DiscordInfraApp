@@ -17,8 +17,10 @@ function translateError(err: unknown): string {
     return 'Email veya şifre hatalı.';
   if (raw.includes('Email not confirmed'))
     return 'E-posta adresinizi doğrulayın.';
-  if (raw.includes('User already registered') || raw.includes('already been registered'))
+  if (raw.includes('User already registered') || raw.includes('already been registered') || raw.includes('already registered'))
     return 'Bu e-posta adresi zaten kayıtlı.';
+  if (raw.includes('Database error') || raw.includes('database error'))
+    return 'Sunucu hatası oluştu. Lütfen tekrar deneyin.';
   if (raw.includes('Password should be at least'))
     return 'Şifre en az 6 karakter olmalıdır.';
   if (raw.includes('Unable to validate email'))

@@ -73,15 +73,38 @@ export function useAuth() {
 
   const signUp = async (email: string, password: string, username: string, displayName: string) => {
     try {
-      const { error } = await supabase.auth.signUp({
+      const cleanUsername = username.toLowerCase().replace(/[^a-z0-9_]/g, '_') || 'user';
+
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
           emailRedirectTo: `${window.location.origin}/`,
-          data: { username, display_name: displayName },
+          data: { username: cleanUsername, display_name: displayName },
         },
       });
-      return { error };
+      if (error) return { error };
+
+      // Explicitly upsert profile so we get proper error messages
+      if (data.user) {
+        const { error: profileErr } = await supabase
+          .from('profiles')
+          .upsert(
+            { id: data.user.id, username: cleanUsername, display_name: displayName },
+            { onConflict: 'id', ignoreDuplicates: false }
+          );
+
+        if (profileErr) {
+          // Username taken → return friendly error
+          if (profileErr.message?.includes('unique') || profileErr.message?.includes('duplicate')) {
+            return { error: new Error('Bu kullanıcı adı zaten alınmış. Başka bir ad deneyin.') };
+          }
+          // Other profile errors are non-fatal (trigger may have created it already)
+          console.warn('Profile upsert warning:', profileErr.message);
+        }
+      }
+
+      return { error: null };
     } catch (e) {
       return { error: e };
     }
