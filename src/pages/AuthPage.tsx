@@ -7,6 +7,27 @@ interface AuthPageProps {
   onSignUp: (email: string, password: string, username: string, displayName: string) => Promise<{ error: unknown }>;
 }
 
+// Translate common Supabase/network errors to Turkish
+function translateError(err: unknown): string {
+  const raw = (err as { message?: string })?.message ?? String(err);
+  if (!raw || raw === 'undefined') return 'Bir hata oluştu, tekrar deneyin.';
+  if (raw.includes('Failed to fetch') || raw.includes('NetworkError') || raw.includes('network'))
+    return 'Sunucuya bağlanılamadı. İnternet bağlantınızı kontrol edin.';
+  if (raw.includes('Invalid login credentials') || raw.includes('invalid_credentials'))
+    return 'Email veya şifre hatalı.';
+  if (raw.includes('Email not confirmed'))
+    return 'E-posta adresinizi doğrulayın.';
+  if (raw.includes('User already registered') || raw.includes('already been registered'))
+    return 'Bu e-posta adresi zaten kayıtlı.';
+  if (raw.includes('Password should be at least'))
+    return 'Şifre en az 6 karakter olmalıdır.';
+  if (raw.includes('Unable to validate email'))
+    return 'Geçersiz e-posta adresi.';
+  if (raw.includes('duplicate') && raw.includes('username'))
+    return 'Bu kullanıcı adı zaten alınmış.';
+  return raw;
+}
+
 export default function AuthPage({ onSignIn, onSignUp }: AuthPageProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
@@ -24,12 +45,23 @@ export default function AuthPage({ onSignIn, onSignUp }: AuthPageProps) {
     try {
       if (mode === 'login') {
         const { error: err } = await onSignIn(email, password);
-        if (err) setError(err instanceof Error ? err.message : 'Giriş başarısız');
+        if (err) setError(translateError(err));
       } else {
-        if (!username || !displayName) { setError('Tüm alanları doldurun'); setLoading(false); return; }
-        const { error: err } = await onSignUp(email, password, username, displayName);
-        if (err) setError(err instanceof Error ? err.message : 'Kayıt başarısız');
+        if (!username.trim() || !displayName.trim()) {
+          setError('Tüm alanları doldurun');
+          setLoading(false);
+          return;
+        }
+        if (password.length < 6) {
+          setError('Şifre en az 6 karakter olmalıdır.');
+          setLoading(false);
+          return;
+        }
+        const { error: err } = await onSignUp(email, password, username.trim(), displayName.trim());
+        if (err) setError(translateError(err));
       }
+    } catch (e) {
+      setError(translateError(e));
     } finally {
       setLoading(false);
     }

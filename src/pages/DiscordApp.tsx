@@ -380,12 +380,15 @@ export default function DiscordApp() {
     setActiveChannelId(firstText?.id ?? null);
   };
 
-  if (loading) {
+  if (loading || (user && !profile)) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-dc-surface">
         <div className="flex flex-col items-center gap-4">
           <FoxLogo size={48} />
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-fox-500/30 border-t-fox-500" />
+          {user && !profile && (
+            <p className="text-xs text-dc-muted-fg">Profil hazırlanıyor...</p>
+          )}
         </div>
       </div>
     );
