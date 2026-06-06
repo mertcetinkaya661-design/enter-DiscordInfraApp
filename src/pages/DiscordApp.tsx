@@ -58,6 +58,7 @@ export default function DiscordApp() {
       ) : activeServer ? (
         <ChannelSidebar
           serverName={activeServer.name}
+          serverColor={activeServer.color}
           categories={activeServer.categories}
           activeChannelId={activeChannelId}
           onSelectChannel={setActiveChannelId}

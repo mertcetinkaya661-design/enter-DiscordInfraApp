@@ -106,3 +106,8 @@ body,
 .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
 .scrollbar-thin::-webkit-scrollbar-thumb { background: hsl(var(--dc-surface)); border-radius: 2px; }
 .scrollbar-thin::-webkit-scrollbar-thumb:hover { background: hsl(var(--dc-muted-fg)); }
+
+/* Radial gradient utility */
+.bg-gradient-radial {
+  background: radial-gradient(ellipse at center, var(--tw-gradient-stops));
+}

@@ -1,4 +1,4 @@
-import { MessageCircle, Plus, Compass } from 'lucide-react';
+import { MessageCircle, Plus, Compass, Bell } from 'lucide-react';
 import type { Server } from '../../types/discord';
 import FoxLogo from './FoxLogo';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../ui/tooltip';
@@ -9,38 +9,55 @@ interface ServerSidebarProps {
   onSelectServer: (id: string | 'dm') => void;
 }
 
-function ServerIcon({ server, isActive, onClick }: { server: Server; isActive: boolean; onClick: () => void }) {
+function ServerPill({ server, isActive, onClick }: { server: Server; isActive: boolean; onClick: () => void }) {
   return (
-    <Tooltip delayDuration={100}>
+    <Tooltip delayDuration={80}>
       <TooltipTrigger asChild>
         <button
           onClick={onClick}
           className="group relative flex items-center"
         >
-          {/* Active indicator */}
+          {/* Active glow pill */}
           <span
-            className={`absolute -left-3 rounded-r-full bg-dc-text-primary transition-all duration-200 ${
-              isActive ? 'h-10 w-1' : 'h-2 w-1 opacity-0 group-hover:opacity-100'
+            className={`absolute -left-3 rounded-r-full transition-all duration-300 ${
+              isActive
+                ? 'h-8 w-1.5 bg-fox-400 shadow-[0_0_8px_2px_rgba(232,114,42,0.5)]'
+                : 'h-2 w-1 bg-dc-text-primary opacity-0 group-hover:opacity-100'
             }`}
           />
+          {/* Server icon */}
           <div
-            className={`flex h-12 w-12 items-center justify-center rounded-[50%] transition-all duration-200 font-bold text-sm text-white
-              ${isActive ? 'rounded-[30%]' : 'group-hover:rounded-[30%]'}
+            className={`relative flex h-12 w-12 items-center justify-center overflow-hidden text-sm font-bold text-white transition-all duration-300
+              ${isActive
+                ? 'rounded-2xl shadow-lg'
+                : 'rounded-[50%] group-hover:rounded-2xl'
+              }
             `}
-            style={{ backgroundColor: server.color }}
+            style={{
+              background: isActive
+                ? `linear-gradient(135deg, ${server.color}, ${server.color}cc)`
+                : server.color,
+              boxShadow: isActive ? `0 4px 16px ${server.color}66` : undefined,
+            }}
           >
             {server.acronym}
+            {/* Shine */}
+            <span className="absolute inset-0 rounded-inherit bg-gradient-to-br from-white/20 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
           </div>
-          {/* Unread dot */}
-          {(server.unread || server.mention) && !isActive && (
-            <span className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-dc-red text-[9px] font-bold text-white">
+
+          {/* Badge */}
+          {(server.mention || server.unread) && !isActive && (
+            <span className={`absolute -bottom-1 -right-1 flex items-center justify-center rounded-full text-[9px] font-bold text-white
+              ${server.mention ? 'h-4 min-w-4 bg-red-500 px-1' : 'h-2.5 w-2.5 bg-fox-400'}
+            `}>
               {server.mention || ''}
             </span>
           )}
         </button>
       </TooltipTrigger>
-      <TooltipContent side="right" className="bg-dc-surface border-none text-dc-text-primary font-semibold">
+      <TooltipContent side="right" sideOffset={12} className="border-none bg-dc-surface font-semibold text-dc-text-primary shadow-xl">
         {server.name}
+        {server.mention ? <span className="ml-2 rounded-full bg-red-500 px-1.5 py-0.5 text-[9px] text-white">{server.mention}</span> : null}
       </TooltipContent>
     </Tooltip>
   );
@@ -48,76 +65,98 @@ function ServerIcon({ server, isActive, onClick }: { server: Server; isActive: b
 
 export default function ServerSidebar({ servers, activeServerId, onSelectServer }: ServerSidebarProps) {
   return (
-    <div className="flex h-full w-[72px] flex-col items-center gap-2 overflow-y-auto bg-dc-surface py-3 scrollbar-none">
-      {/* FIX Logo / DM Button */}
-      <Tooltip delayDuration={100}>
+    <div className="flex h-full w-[76px] flex-col items-center overflow-y-auto bg-dc-surface py-3 scrollbar-none">
+      {/* FIX Brand */}
+      <Tooltip delayDuration={80}>
         <TooltipTrigger asChild>
           <button
             onClick={() => onSelectServer('dm')}
-            className={`group relative flex h-12 w-12 items-center justify-center rounded-[50%] transition-all duration-200
-              ${activeServerId === 'dm' ? 'rounded-[30%] bg-fox-600' : 'bg-dc-sidebar hover:rounded-[30%] hover:bg-fox-500'}
-            `}
+            className="group relative flex flex-col items-center gap-1 pb-1"
           >
-            <span className={`absolute -left-3 rounded-r-full bg-dc-text-primary transition-all duration-200 ${activeServerId === 'dm' ? 'h-10 w-1' : 'h-2 w-1 opacity-0 group-hover:opacity-100'}`} />
-            <FoxLogo size={28} />
+            <span className={`absolute -left-3 rounded-r-full transition-all duration-300 ${
+              activeServerId === 'dm'
+                ? 'h-8 w-1.5 bg-fox-400 shadow-[0_0_8px_2px_rgba(232,114,42,0.5)]'
+                : 'h-2 w-1 bg-dc-text-primary opacity-0 group-hover:opacity-100'
+            }`} />
+            <div className={`flex h-12 w-12 items-center justify-center rounded-[50%] transition-all duration-300
+              ${activeServerId === 'dm' ? 'rounded-2xl bg-fox-600' : 'bg-dc-bg group-hover:rounded-2xl group-hover:bg-fox-500'}
+            `}>
+              <FoxLogo size={30} />
+            </div>
+            <span className="text-[9px] font-black tracking-widest text-fox-400">FIX</span>
           </button>
         </TooltipTrigger>
-        <TooltipContent side="right" className="bg-dc-surface border-none text-dc-text-primary font-semibold">
+        <TooltipContent side="right" sideOffset={12} className="border-none bg-dc-surface font-semibold text-dc-text-primary shadow-xl">
           Direkt Mesajlar
         </TooltipContent>
       </Tooltip>
 
-      {/* Divider */}
-      <div className="h-px w-8 rounded-full bg-dc-sidebar" />
+      {/* Separator */}
+      <div className="my-2 h-px w-9 rounded-full bg-dc-sidebar" />
 
-      {/* Servers */}
-      {servers.map((server) => (
-        <ServerIcon
-          key={server.id}
-          server={server}
-          isActive={activeServerId === server.id}
-          onClick={() => onSelectServer(server.id)}
-        />
-      ))}
+      {/* Server list */}
+      <div className="flex flex-col items-center gap-2">
+        {servers.map((server) => (
+          <ServerPill
+            key={server.id}
+            server={server}
+            isActive={activeServerId === server.id}
+            onClick={() => onSelectServer(server.id)}
+          />
+        ))}
+      </div>
 
-      {/* Divider */}
-      <div className="h-px w-8 rounded-full bg-dc-sidebar" />
+      {/* Separator */}
+      <div className="my-2 h-px w-9 rounded-full bg-dc-sidebar" />
 
-      {/* Add server */}
-      <Tooltip delayDuration={100}>
-        <TooltipTrigger asChild>
-          <button className="group flex h-12 w-12 items-center justify-center rounded-[50%] bg-dc-sidebar transition-all duration-200 hover:rounded-[30%] hover:bg-dc-green">
-            <Plus className="h-5 w-5 text-dc-green transition-colors group-hover:text-white" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right" className="bg-dc-surface border-none text-dc-text-primary font-semibold">
-          Sunucu Ekle
-        </TooltipContent>
-      </Tooltip>
+      {/* Add / discover */}
+      <div className="flex flex-col items-center gap-2">
+        <Tooltip delayDuration={80}>
+          <TooltipTrigger asChild>
+            <button className="group flex h-12 w-12 items-center justify-center rounded-[50%] bg-dc-bg text-dc-green transition-all duration-300 hover:rounded-2xl hover:bg-dc-green hover:text-white">
+              <Plus className="h-5 w-5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={12} className="border-none bg-dc-surface font-semibold text-dc-text-primary shadow-xl">
+            Yeni Sunucu
+          </TooltipContent>
+        </Tooltip>
 
-      {/* Discover */}
-      <Tooltip delayDuration={100}>
-        <TooltipTrigger asChild>
-          <button className="group flex h-12 w-12 items-center justify-center rounded-[50%] bg-dc-sidebar transition-all duration-200 hover:rounded-[30%] hover:bg-dc-green">
-            <Compass className="h-5 w-5 text-dc-green transition-colors group-hover:text-white" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right" className="bg-dc-surface border-none text-dc-text-primary font-semibold">
-          Sunucuları Keşfet
-        </TooltipContent>
-      </Tooltip>
+        <Tooltip delayDuration={80}>
+          <TooltipTrigger asChild>
+            <button className="group flex h-12 w-12 items-center justify-center rounded-[50%] bg-dc-bg text-dc-green transition-all duration-300 hover:rounded-2xl hover:bg-dc-green hover:text-white">
+              <Compass className="h-5 w-5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={12} className="border-none bg-dc-surface font-semibold text-dc-text-primary shadow-xl">
+            Keşfet
+          </TooltipContent>
+        </Tooltip>
+      </div>
 
-      {/* DM fallback icon */}
-      <Tooltip delayDuration={100}>
-        <TooltipTrigger asChild>
-          <button className="group mt-auto flex h-12 w-12 items-center justify-center rounded-[50%] bg-dc-sidebar transition-all duration-200 hover:rounded-[30%] hover:bg-fox-500">
-            <MessageCircle className="h-5 w-5 text-dc-muted-fg transition-colors group-hover:text-white" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right" className="bg-dc-surface border-none text-dc-text-primary font-semibold">
-          Mesajlar
-        </TooltipContent>
-      </Tooltip>
+      {/* Notifications at bottom */}
+      <div className="mt-auto flex flex-col items-center gap-2 pt-2">
+        <Tooltip delayDuration={80}>
+          <TooltipTrigger asChild>
+            <button className="group flex h-12 w-12 items-center justify-center rounded-[50%] bg-dc-bg text-dc-muted-fg transition-all duration-300 hover:rounded-2xl hover:bg-fox-500 hover:text-white">
+              <Bell className="h-5 w-5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={12} className="border-none bg-dc-surface font-semibold text-dc-text-primary shadow-xl">
+            Bildirimler
+          </TooltipContent>
+        </Tooltip>
+        <Tooltip delayDuration={80}>
+          <TooltipTrigger asChild>
+            <button className="group flex h-12 w-12 items-center justify-center rounded-[50%] bg-dc-bg text-dc-muted-fg transition-all duration-300 hover:rounded-2xl hover:bg-fox-500 hover:text-white">
+              <MessageCircle className="h-5 w-5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" sideOffset={12} className="border-none bg-dc-surface font-semibold text-dc-text-primary shadow-xl">
+            Mesajlar
+          </TooltipContent>
+        </Tooltip>
+      </div>
     </div>
   );
 }

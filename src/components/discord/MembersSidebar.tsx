@@ -1,19 +1,19 @@
-import type { ServerMember, UserStatus } from '../../types/discord';
+import type { ServerMember } from '../../types/discord';
 import UserAvatar from './UserAvatar';
 
 interface MembersSidebarProps {
   members: ServerMember[];
 }
 
-const statusLabel: Record<UserStatus, string> = {
-  online: 'Çevrimiçi',
-  idle: 'Boşta',
-  dnd: 'Rahatsız Etme',
-  offline: 'Çevrimdışı',
+const roleColors: Record<string, string> = {
+  owner: 'text-fox-400 bg-fox-500/15',
+  admin: 'text-amber-400 bg-amber-500/15',
+  mod: 'text-green-400 bg-green-500/15',
+  member: '',
 };
 
-const roleLabel: Record<string, string> = {
-  owner: 'Sunucu Sahibi',
+const roleLabels: Record<string, string> = {
+  owner: 'Sahip',
   admin: 'Yönetici',
   mod: 'Moderatör',
   member: 'Üye',
@@ -44,34 +44,56 @@ export default function MembersSidebar({ members }: MembersSidebarProps) {
     { key: 'offline', label: 'Çevrimdışı', members: grouped.offline },
   ].filter((s) => s.members.length > 0);
 
+  const total = members.length;
+  const online = members.filter((m) => m.user.status !== 'offline').length;
+
   return (
-    <div className="flex h-full w-60 flex-col overflow-y-auto bg-dc-sidebar px-2 py-4 scrollbar-thin scrollbar-thumb-dc-surface">
-      <div className="mb-3 px-2 text-[11px] font-bold uppercase tracking-wider text-dc-muted-fg">
-        Üyeler — {members.length}
-      </div>
-      {sections.map((section) => (
-        <div key={section.key} className="mb-4">
-          <div className="mb-1 px-2 text-[11px] font-bold uppercase tracking-wider text-dc-muted-fg">
-            {section.label} — {section.members.length}
-          </div>
-          {section.members.map((member) => (
-            <button
-              key={member.user.id}
-              className="group flex w-full items-center gap-3 rounded px-2 py-1.5 transition-colors hover:bg-dc-channel-hover"
-            >
-              <UserAvatar user={member.user} size="sm" showStatus />
-              <div className="flex min-w-0 flex-col text-left">
-                <span className={`truncate text-sm font-medium ${member.user.status === 'offline' ? 'text-dc-muted-fg' : 'text-dc-text-secondary group-hover:text-dc-text-primary'}`}>
-                  {member.nickname ?? member.user.displayName}
-                </span>
-                {member.user.customStatus && (
-                  <span className="truncate text-[11px] text-dc-muted-fg">{member.user.customStatus}</span>
-                )}
-              </div>
-            </button>
-          ))}
+    <div className="flex h-full w-56 flex-col bg-dc-sidebar">
+      {/* Header */}
+      <div className="flex h-14 flex-shrink-0 items-center justify-between px-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+        <div className="flex flex-col">
+          <span className="text-sm font-bold text-dc-text-primary leading-tight">Üyeler</span>
+          <span className="text-[10px] text-dc-muted-fg">{online} çevrimiçi · {total} toplam</span>
         </div>
-      ))}
+      </div>
+
+      {/* Member list */}
+      <div className="flex-1 overflow-y-auto px-3 py-3 scrollbar-thin scrollbar-thumb-dc-surface">
+        {sections.map((section) => (
+          <div key={section.key} className="mb-5">
+            <div className="mb-2 flex items-center gap-2">
+              <div className="h-px flex-1 bg-dc-surface/60" />
+              <span className="text-[10px] font-bold uppercase tracking-wider text-dc-muted-fg/60">{section.label}</span>
+              <div className="h-px flex-1 bg-dc-surface/60" />
+            </div>
+            <div className="flex flex-col gap-0.5">
+              {section.members.map((member) => (
+                <button
+                  key={member.user.id}
+                  className="group flex w-full items-center gap-2.5 rounded-xl px-2 py-2 transition-all hover:bg-dc-channel-hover/60"
+                >
+                  <UserAvatar user={member.user} size="sm" showStatus />
+                  <div className="flex min-w-0 flex-1 flex-col text-left">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`truncate text-xs font-semibold ${member.user.status === 'offline' ? 'text-dc-muted-fg/50' : 'text-dc-text-secondary group-hover:text-dc-text-primary'}`}>
+                        {member.nickname ?? member.user.displayName}
+                      </span>
+                      {member.role !== 'member' && (
+                        <span className={`rounded-md px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide ${roleColors[member.role]}`}>
+                          {roleLabels[member.role]}
+                        </span>
+                      )}
+                    </div>
+                    {member.user.customStatus && (
+                      <span className="truncate text-[10px] text-dc-muted-fg/60">{member.user.customStatus}</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
