@@ -590,9 +590,18 @@ function VoicePanel({ channelId, channelName, userId, voice }: {
 }) {
   const { participants, isConnected, isMuted, isDeafened, listenOnly, error, joinChannel, leaveChannel, toggleMute, toggleDeafen } = voice;
   const micDenied = error === 'MIC_DENIED';
+  const [micPermission, setMicPermission] = useState<'granted' | 'denied' | 'prompt' | 'unknown'>('unknown');
   const [outputDevices, setOutputDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedSpeaker, setSelectedSpeaker] = useState('default');
   const [showSpeakerMenu, setShowSpeakerMenu] = useState(false);
+
+  // Check mic permission state on mount
+  useEffect(() => {
+    navigator.permissions?.query({ name: 'microphone' as PermissionName }).then(r => {
+      setMicPermission(r.state as 'granted' | 'denied' | 'prompt');
+      r.onchange = () => setMicPermission(r.state as 'granted' | 'denied' | 'prompt');
+    }).catch(() => setMicPermission('unknown'));
+  }, []);
 
   // Enumerate audio output devices when connected
   useEffect(() => {
@@ -629,34 +638,66 @@ function VoicePanel({ channelId, channelName, userId, voice }: {
 
         {micDenied ? (
           <div className="flex max-w-sm flex-col items-center gap-4">
-            <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/10 px-5 py-4 text-center">
-              <div className="mb-1 flex items-center justify-center gap-2">
-                <MicOff className="h-4 w-4 text-yellow-400" />
-                <span className="text-sm font-semibold text-yellow-400">Mikrofon erişimi yok</span>
+            <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-6 py-5 text-center">
+              <div className="mb-2 flex items-center justify-center gap-2">
+                <MicOff className="h-5 w-5 text-red-400" />
+                <span className="text-sm font-semibold text-red-400">Mikrofon Erişimi Engellendi</span>
               </div>
-              <p className="text-xs text-dc-muted-fg">
-                Tarayıcı mikrofon iznini reddetti. Adres çubuğundaki kilit simgesinden izin ver, ya da sessiz (sadece dinle) olarak katıl.
+              <p className="text-xs text-dc-muted-fg leading-relaxed">
+                Tarayıcı mikrofon iznini reddetti. Adres çubuğundaki
+                <span className="mx-1 rounded bg-dc-surface px-1 py-0.5 font-mono text-[11px] text-dc-text-secondary">🔒</span>
+                simgesine tıklayıp <strong className="text-dc-text-primary">Mikrofon → İzin Ver</strong> seç.
               </p>
             </div>
-            <div className="flex gap-3">
+            <div className="flex flex-col gap-2.5 w-full max-w-xs">
               <button
-                onClick={() => joinChannel(channelId, true)}
-                className="flex items-center gap-2 rounded-xl border border-dc-surface bg-dc-sidebar px-5 py-3 text-sm font-semibold text-dc-text-secondary hover:bg-dc-channel-hover transition-all"
-              >
-                <VolumeX className="h-4 w-4" />
-                Sessiz Katıl
-              </button>
-              <button
-                onClick={() => joinChannel(channelId)}
-                className="flex items-center gap-2 rounded-xl bg-fox-500 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-fox-500/30 hover:bg-fox-600 active:scale-95 transition-all"
+                onClick={async () => {
+                  try {
+                    await navigator.mediaDevices.getUserMedia({ audio: true });
+                    joinChannel(channelId);
+                  } catch {
+                    /* still denied */
+                  }
+                }}
+                className="flex items-center justify-center gap-2 rounded-xl bg-fox-500 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-fox-500/30 hover:bg-fox-600 active:scale-95 transition-all"
               >
                 <Mic className="h-4 w-4" />
-                Tekrar Dene
+                Mikrofon İzni Ver ve Katıl
+              </button>
+              <button
+                onClick={() => window.open(window.location.href, '_blank')}
+                className="flex items-center justify-center gap-2 rounded-xl border border-fox-500/30 bg-fox-500/10 px-5 py-2.5 text-sm font-semibold text-fox-300 hover:bg-fox-500/20 transition-all"
+              >
+                Yeni Sekmede Aç (Önerilen)
+              </button>
+              <button
+                onClick={() => joinChannel(channelId, true)}
+                className="flex items-center justify-center gap-2 rounded-xl border border-dc-surface bg-transparent px-5 py-2.5 text-sm text-dc-muted-fg hover:bg-dc-channel-hover transition-all"
+              >
+                <VolumeX className="h-4 w-4" />
+                Sessiz Katıl (Sadece Dinle)
               </button>
             </div>
           </div>
         ) : (
           <>
+            {/* Mic permission status badge */}
+            {micPermission !== 'granted' && micPermission !== 'unknown' && (
+              <div className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-xs font-medium ${
+                micPermission === 'denied'
+                  ? 'bg-red-500/10 text-red-400 ring-1 ring-red-500/20'
+                  : 'bg-yellow-500/10 text-yellow-400 ring-1 ring-yellow-500/20'
+              }`}>
+                <MicOff className="h-3.5 w-3.5" />
+                {micPermission === 'denied' ? 'Mikrofon izni engellendi' : 'Mikrofon izni isteniyor'}
+              </div>
+            )}
+            {micPermission === 'granted' && (
+              <div className="flex items-center gap-2 rounded-xl bg-green-500/10 px-4 py-2 text-xs font-medium text-green-400 ring-1 ring-green-500/20">
+                <Mic className="h-3.5 w-3.5" />
+                Mikrofon hazır
+              </div>
+            )}
             <button
               onClick={() => joinChannel(channelId)}
               className="rounded-xl bg-fox-500 px-10 py-3.5 text-sm font-bold text-white shadow-lg shadow-fox-500/30 hover:bg-fox-600 active:scale-95 transition-all"
