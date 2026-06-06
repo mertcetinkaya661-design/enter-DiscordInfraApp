@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  Hash, Volume2, Megaphone, Bell, Pin, Users, Search, Sparkles,
+  Hash, Volume2, Megaphone, Bell, Users, Search, Sparkles,
   ChevronDown, ChevronRight, Settings, Plus, Paperclip, Smile,
   Mic, MicOff, Send, LogOut, Headphones, VolumeX, PhoneOff, Copy, Check,
   UserPlus, Shield, UserX, Bot, X as XIcon, FileText, Download, MonitorSpeaker,
@@ -98,32 +98,66 @@ function AttachmentView({ url, type, name, size }: { url: string; type: string |
   );
 }
 
-function MessageBubble({ message, isOwn, showHeader, isBot, onDelete }: {
+function MessageBubble({ message, isOwn, showHeader, isBot, onDelete, onEdit }: {
   message: Message;
   isOwn: boolean;
   showHeader: boolean;
   isBot?: boolean;
   onDelete?: () => void;
+  onEdit?: (content: string) => void;
 }) {
   const name = message.author?.display_name ?? 'Bilinmeyen';
+  const [editMode, setEditMode] = useState(false);
+  const [editVal, setEditVal] = useState(message.content);
+
+  const saveEdit = () => {
+    if (editVal.trim() && editVal.trim() !== message.content) onEdit?.(editVal.trim());
+    setEditMode(false);
+  };
+
+  const contentDisplay = message.content === ' ' ? null : message.content;
 
   if (isOwn) {
     return (
       <div className={`group flex flex-col items-end px-4 ${showHeader ? 'mt-4' : 'mt-0.5'}`}>
         {showHeader && <span className="mb-1 mr-1 text-[11px] text-dc-muted-fg">{formatTime(message.created_at)}</span>}
         <div className="flex max-w-[72%] flex-col items-end gap-1">
-          <div className="relative rounded-2xl rounded-tr-sm bg-fox-600 px-4 py-2 text-sm leading-relaxed text-white shadow-sm">
-            {message.content}
-            {message.edited_at && <span className="ml-1 text-[10px] text-fox-200">(düzenlendi)</span>}
-            {onDelete && (
-              <button
-                onClick={onDelete}
-                className="absolute -left-8 top-1/2 -translate-y-1/2 hidden rounded bg-dc-surface px-1 py-0.5 text-[10px] text-dc-muted-fg hover:text-red-400 group-hover:flex"
-              >
-                sil
-              </button>
-            )}
-          </div>
+          {editMode ? (
+            <div className="w-full rounded-2xl rounded-tr-sm bg-dc-input ring-1 ring-fox-500/50 p-2">
+              <textarea
+                autoFocus
+                value={editVal}
+                onChange={e => setEditVal(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveEdit(); }
+                  if (e.key === 'Escape') setEditMode(false);
+                }}
+                className="w-full resize-none bg-transparent text-sm text-dc-text-primary outline-none"
+                rows={2}
+              />
+              <div className="flex justify-end gap-1.5 pt-1">
+                <button onClick={() => setEditMode(false)} className="rounded-lg px-2 py-1 text-[11px] text-dc-muted-fg hover:text-dc-text-primary transition-colors">İptal</button>
+                <button onClick={saveEdit} className="rounded-lg bg-fox-500 px-2 py-1 text-[11px] font-bold text-white hover:bg-fox-600 transition-all">Kaydet</button>
+              </div>
+            </div>
+          ) : (
+            <div
+              onDoubleClick={() => { if (onEdit) { setEditMode(true); setEditVal(message.content); } }}
+              className="relative rounded-2xl rounded-tr-sm bg-fox-600 px-4 py-2 text-sm leading-relaxed text-white shadow-sm cursor-default select-text"
+              title={onEdit ? 'Düzenlemek için çift tıkla' : undefined}
+            >
+              {contentDisplay}
+              {message.edited_at && <span className="ml-1 text-[10px] text-fox-200">(düzenlendi)</span>}
+              {onDelete && (
+                <button
+                  onClick={onDelete}
+                  className="absolute -left-8 top-1/2 -translate-y-1/2 hidden rounded bg-dc-surface px-1 py-0.5 text-[10px] text-dc-muted-fg hover:text-red-400 group-hover:flex"
+                >
+                  sil
+                </button>
+              )}
+            </div>
+          )}
           {message.attachment_url && (
             <AttachmentView url={message.attachment_url} type={message.attachment_type} name={message.attachment_name} size={message.attachment_size} />
           )}
@@ -153,10 +187,12 @@ function MessageBubble({ message, isOwn, showHeader, isBot, onDelete }: {
             <span className="text-[11px] text-dc-muted-fg">{formatTime(message.created_at)}</span>
           </div>
         )}
-        <div className={`max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-2 text-sm leading-relaxed ${isBot ? 'bg-fox-500/10 text-dc-text-primary ring-1 ring-fox-500/20' : 'bg-dc-sidebar text-dc-text-secondary'}`}>
-          {message.content}
-          {message.edited_at && <span className="ml-1 text-[10px] text-dc-muted-fg">(düzenlendi)</span>}
-        </div>
+        {contentDisplay && (
+          <div className={`max-w-[80%] rounded-2xl rounded-tl-sm px-4 py-2 text-sm leading-relaxed ${isBot ? 'bg-fox-500/10 text-dc-text-primary ring-1 ring-fox-500/20' : 'bg-dc-sidebar text-dc-text-secondary'}`}>
+            {contentDisplay}
+            {message.edited_at && <span className="ml-1 text-[10px] text-dc-muted-fg">(düzenlendi)</span>}
+          </div>
+        )}
         {message.attachment_url && (
           <AttachmentView url={message.attachment_url} type={message.attachment_type} name={message.attachment_name} size={message.attachment_size} />
         )}
@@ -190,7 +226,9 @@ function processBotCommand(cmd: string, channelId: string): Message | null {
       const max = parseInt(parts[1] ?? '6') || 6;
       return makeMsg(`Zar: **${Math.floor(Math.random() * max) + 1}** (1-${max})`);
     }
-    case '/coin': return makeMsg(Math.random() > 0.5 ? 'Yazı! (Heads)' : 'Tura! (Tails)');
+    case '/ping': return makeMsg('Pong! 🏓 Bağlantı aktif.');
+  case '/zaman': return makeMsg(`Şu anki saat: ${new Date().toLocaleTimeString('tr-TR')}`);
+  case '/coin': return makeMsg(Math.random() > 0.5 ? 'Yazı! (Heads)' : 'Tura! (Tails)');
     case '/shrug': return makeMsg('¯\\_(ツ)_/¯');
     case '/serverinfo': return makeMsg('Sunucu bilgisi: FIX Sunucusu · Altyapı: Enter Cloud Realtime');
     default: return makeMsg(`Bilinmeyen komut: \`${command}\`. \`/help\` yazarak komutları görebilirsin.`);
@@ -209,7 +247,7 @@ function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, 
   showMembers: boolean;
   onToggleMembers: () => void;
 }) {
-  const { messages: dbMessages, loading, sendMessage, deleteMessage, searchMessages } = useMessages(channelId, channelName);
+  const { messages: dbMessages, loading, sendMessage, deleteMessage, editMessage, searchMessages } = useMessages(channelId, channelName);
   const { typingUsers, startTyping } = useTyping(channelId, userId, userDisplayName);
   const [input, setInput] = useState('');
   const [focused, setFocused] = useState(false);
@@ -219,8 +257,10 @@ function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, 
   const [searchResults, setSearchResults] = useState<Message[]>([]);
   const [searching, setSearching] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showBotHelp, setShowBotHelp] = useState(false);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [notifGranted, setNotifGranted] = useState(Notification.permission === 'granted');
   const bottomRef = useRef<HTMLDivElement>(null);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -228,7 +268,7 @@ function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, 
   // Request notification permission once
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
-      Notification.requestPermission();
+      Notification.requestPermission().then(p => setNotifGranted(p === 'granted'));
     }
   }, []);
 
@@ -327,8 +367,19 @@ function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, 
           {channelTopic && <span className="text-[11px] text-dc-muted-fg truncate max-w-xs">{channelTopic}</span>}
         </div>
         <div className="ml-auto flex items-center gap-0.5">
-          <button className="flex h-8 w-8 items-center justify-center rounded-lg text-dc-muted-fg hover:bg-dc-channel-hover hover:text-dc-text-primary transition-all"><Bell className="h-4 w-4" /></button>
-          <button className="flex h-8 w-8 items-center justify-center rounded-lg text-dc-muted-fg hover:bg-dc-channel-hover hover:text-dc-text-primary transition-all"><Pin className="h-4 w-4" /></button>
+          <button
+            onClick={() => {
+              if (Notification.permission === 'default') {
+                Notification.requestPermission().then(p => setNotifGranted(p === 'granted'));
+              } else {
+                setNotifGranted(Notification.permission === 'granted');
+              }
+            }}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all hover:bg-dc-channel-hover ${notifGranted ? 'text-fox-400' : 'text-dc-muted-fg hover:text-dc-text-primary'}`}
+            title={notifGranted ? 'Bildirimler açık' : 'Bildirimlere izin ver'}
+          >
+            <Bell className="h-4 w-4" />
+          </button>
           <button onClick={onToggleMembers} className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all hover:bg-dc-channel-hover ${showMembers ? 'bg-fox-500/20 text-fox-400' : 'text-dc-muted-fg hover:text-dc-text-primary'}`}><Users className="h-4 w-4" /></button>
           <div className="mx-1 h-4 w-px bg-dc-surface" />
           <button
@@ -337,7 +388,13 @@ function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, 
           >
             <Search className="h-4 w-4" />
           </button>
-          <button className="flex h-8 w-8 items-center justify-center rounded-lg text-dc-muted-fg hover:bg-dc-channel-hover hover:text-dc-text-primary transition-all"><Sparkles className="h-4 w-4" /></button>
+          <button
+            onClick={() => setShowBotHelp(v => !v)}
+            className={`flex h-8 w-8 items-center justify-center rounded-lg transition-all hover:bg-dc-channel-hover ${showBotHelp ? 'bg-fox-500/20 text-fox-400' : 'text-dc-muted-fg hover:text-dc-text-primary'}`}
+            title="Bot Komutları"
+          >
+            <Sparkles className="h-4 w-4" />
+          </button>
         </div>
         <div className="absolute bottom-0 left-0 right-0 h-px bg-dc-surface" />
       </div>
@@ -373,7 +430,8 @@ function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, 
                   isOwn={msg.author_id === userId && !isBot}
                   showHeader={showHeader}
                   isBot={isBot}
-                  onDelete={msg.author_id === userId ? () => deleteMessage(msg.id) : undefined}
+                  onDelete={msg.author_id === userId && !isBot ? () => deleteMessage(msg.id) : undefined}
+                  onEdit={msg.author_id === userId && !isBot ? (content) => editMessage(msg.id, content) : undefined}
                 />
               );
             })}
@@ -486,6 +544,40 @@ function ChatPanel({ channelId, channelName, channelType, channelTopic, userId, 
         <p className="mt-1.5 px-2 text-[10px] text-dc-muted-fg/40">Enter ile gönder · Shift+Enter yeni satır · / ile komut</p>
       </div>
       </div>
+
+      {/* Bot help panel */}
+      {showBotHelp && (
+        <div className="flex w-64 flex-col bg-dc-sidebar" style={{ borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
+          <div className="flex h-14 flex-shrink-0 items-center justify-between px-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+            <div className="flex items-center gap-2">
+              <Bot className="h-4 w-4 text-fox-400" />
+              <span className="text-sm font-bold text-dc-text-primary">Bot Komutları</span>
+            </div>
+            <button onClick={() => setShowBotHelp(false)} className="text-dc-muted-fg hover:text-dc-text-primary transition-colors"><XIcon className="h-4 w-4" /></button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 scrollbar-thin scrollbar-thumb-dc-surface">
+            {[
+              { cmd: '/help', desc: 'Tüm komutları listele' },
+              { cmd: '/merhaba', desc: 'Bot sana selam verir' },
+              { cmd: '/roll', desc: 'Zar at (1-100)' },
+              { cmd: '/coin', desc: 'Yazı tura at' },
+              { cmd: '/shrug', desc: '¯\\_(ツ)_/¯' },
+              { cmd: '/serverinfo', desc: 'Sunucu bilgisi' },
+              { cmd: '/ping', desc: 'Bağlantıyı test et' },
+              { cmd: '/zaman', desc: 'Şu anki saat' },
+            ].map(item => (
+              <button
+                key={item.cmd}
+                onClick={() => { setInput(item.cmd); setShowBotHelp(false); }}
+                className="flex w-full flex-col items-start rounded-xl px-3 py-2.5 hover:bg-dc-channel-hover/60 transition-colors mb-1"
+              >
+                <span className="font-mono text-sm font-bold text-fox-400">{item.cmd}</span>
+                <span className="text-xs text-dc-muted-fg">{item.desc}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Search panel */}
       {showSearch && (
@@ -878,10 +970,23 @@ export default function DiscordApp() {
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
   const [copiedInvite, setCopiedInvite] = useState(false);
   const [memberContextMenu, setMemberContextMenu] = useState<{ memberId: string; userId: string; x: number; y: number } | null>(null);
+  const pendingSelectRef = useRef<string | null>(null);
 
-  // Auto-select first server/channel
+  // Auto-select first server/channel; also handles post-creation navigation
   useEffect(() => {
-    if (servers.length > 0 && !activeServerId) {
+    if (!servers.length) return;
+    // Navigate to newly created server
+    if (pendingSelectRef.current) {
+      const target = servers.find(s => s.id === pendingSelectRef.current);
+      if (target) {
+        pendingSelectRef.current = null;
+        setActiveServerId(target.id);
+        const firstText = target.categories.flatMap(c => c.channels).find(ch => ch.type === 'text');
+        if (firstText) setActiveChannelId(firstText.id);
+        return;
+      }
+    }
+    if (!activeServerId) {
       const server = servers[0];
       setActiveServerId(server.id);
       const firstText = server.categories.flatMap(c => c.channels).find(ch => ch.type === 'text');
@@ -1313,6 +1418,9 @@ export default function DiscordApp() {
           onCreate={async (name, color) => {
             const result = await createServer(name, color, user.id);
             if (result?.error) throw result.error;
+            if (result?.serverId) {
+              pendingSelectRef.current = result.serverId;
+            }
           }}
           onJoin={async (code) => {
             const result = await joinServerByInvite(code, user.id);
