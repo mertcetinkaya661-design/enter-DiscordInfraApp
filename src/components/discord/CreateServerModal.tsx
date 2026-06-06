@@ -109,18 +109,24 @@ export default function CreateServerModal({ onClose, onCreate, onJoin }: CreateS
           </form>
         ) : (
           <form onSubmit={handleJoin} className="flex flex-col gap-4">
+            <div className="rounded-xl bg-fox-500/10 px-4 py-3 text-[12px] text-dc-text-secondary ring-1 ring-fox-500/20">
+              Arkadaşından aldığın davet kodunu girerek sunucusuna katılabilirsin.
+              Davet kodu kanal listesinin üstünde görünür.
+            </div>
             <div>
               <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-dc-muted-fg">Davet Kodu</label>
               <input
                 type="text"
                 value={inviteCode}
-                onChange={e => setInviteCode(e.target.value)}
+                onChange={e => setInviteCode(e.target.value.trim())}
                 placeholder="abc123def"
                 required
-                className="w-full rounded-xl bg-dc-surface px-4 py-3 text-sm text-dc-text-primary placeholder:text-dc-muted-fg/50 focus:outline-none focus:ring-2 focus:ring-fox-500/50"
+                autoComplete="off"
+                spellCheck={false}
+                className="w-full rounded-xl bg-dc-surface px-4 py-3 font-mono text-sm text-dc-text-primary placeholder:text-dc-muted-fg/50 focus:outline-none focus:ring-2 focus:ring-fox-500/50"
               />
             </div>
-            {error && <p className="text-sm text-red-400">{error}</p>}
+            {error && <p className="rounded-xl bg-red-500/10 px-4 py-2 text-sm text-red-400 ring-1 ring-red-500/20">{error}</p>}
             <button type="submit" disabled={loading || !inviteCode.trim()} className="rounded-xl bg-fox-500 py-3 text-sm font-bold text-white shadow-lg transition-all hover:bg-fox-600 active:scale-[0.98] disabled:opacity-60">
               {loading ? 'Katılınıyor...' : 'Sunucuya Katıl'}
             </button>

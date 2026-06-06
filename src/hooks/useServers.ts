@@ -132,9 +132,17 @@ export function useServers(userId: string | undefined) {
   };
 
   const joinServerByInvite = async (inviteCode: string, userId: string) => {
-    const { data: server } = await supabase.from('servers').select('id').eq('invite_code', inviteCode).maybeSingle();
-    if (!server) return { error: new Error('Geçersiz davet kodu') };
-    await supabase.from('server_members').upsert({ server_id: server.id, user_id: userId, role: 'member' });
+    if (!inviteCode.trim()) return { error: new Error('Davet kodu boş olamaz') };
+    const { data: server } = await supabase
+      .from('servers')
+      .select('id')
+      .eq('invite_code', inviteCode.trim().toLowerCase())
+      .maybeSingle();
+    if (!server) return { error: new Error('Geçersiz davet kodu. Kodu kontrol edip tekrar deneyin.') };
+    const { error: upsertErr } = await supabase
+      .from('server_members')
+      .upsert({ server_id: server.id, user_id: userId, role: 'member' });
+    if (upsertErr) return { error: new Error('Sunucuya katılırken hata oluştu.') };
     await fetchServers();
     return { error: null, serverId: server.id };
   };

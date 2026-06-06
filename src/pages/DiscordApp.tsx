@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   Hash, Volume2, Megaphone, Bell, Pin, Users, Search, Sparkles,
   ChevronDown, ChevronRight, Settings, Plus, Paperclip, Smile,
-  Mic, MicOff, Send, LogOut, Headphones, VolumeX, PhoneOff,
+  Mic, MicOff, Send, LogOut, Headphones, VolumeX, PhoneOff, Copy, Check,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useServers } from '../hooks/useServers';
@@ -362,6 +362,7 @@ export default function DiscordApp() {
   const [showMembers, setShowMembers] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [collapsedCats, setCollapsedCats] = useState<Set<string>>(new Set());
+  const [copiedInvite, setCopiedInvite] = useState(false);
 
   // Auto-select first server/channel
   useEffect(() => {
@@ -502,6 +503,29 @@ export default function DiscordApp() {
               <span>Kanal ara...</span>
             </div>
           </div>
+
+          {/* Invite code */}
+          {activeServer.invite_code && (
+            <div className="mx-3 mb-2 flex items-center justify-between rounded-xl bg-dc-surface/60 px-3 py-2">
+              <div className="flex flex-col min-w-0">
+                <span className="text-[9px] font-bold uppercase tracking-wider text-dc-muted-fg/70">Davet Kodu</span>
+                <span className="mt-0.5 truncate font-mono text-[12px] font-semibold text-dc-text-secondary">
+                  {activeServer.invite_code}
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(activeServer.invite_code);
+                  setCopiedInvite(true);
+                  setTimeout(() => setCopiedInvite(false), 2000);
+                }}
+                className={`ml-2 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg transition-all
+                  ${copiedInvite ? 'text-green-400' : 'text-dc-muted-fg hover:bg-white/10 hover:text-dc-text-primary'}`}
+              >
+                {copiedInvite ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+          )}
 
           {/* Channels */}
           <div className="flex-1 overflow-y-auto px-2 py-1 scrollbar-thin scrollbar-thumb-dc-surface">
@@ -655,8 +679,14 @@ export default function DiscordApp() {
       {showCreateModal && user && (
         <CreateServerModal
           onClose={() => setShowCreateModal(false)}
-          onCreate={async (name, color) => { await createServer(name, color, user.id); }}
-          onJoin={async (code) => { await joinServerByInvite(code, user.id); }}
+          onCreate={async (name, color) => {
+            const result = await createServer(name, color, user.id);
+            if (result?.error) throw result.error;
+          }}
+          onJoin={async (code) => {
+            const result = await joinServerByInvite(code, user.id);
+            if (result?.error) throw result.error;
+          }}
         />
       )}
     </div>
