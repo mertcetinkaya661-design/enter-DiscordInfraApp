@@ -103,32 +103,52 @@ export function useServers(userId: string | undefined) {
   useEffect(() => { fetchServers(); }, [fetchServers]);
 
   const createServer = async (name: string, color: string, userId: string) => {
-    const { data: server, error } = await supabase
-      .from('servers')
-      .insert({ name, color, owner_id: userId })
-      .select()
-      .single();
-    if (error || !server) return { error };
+    try {
+      // 1. Create server
+      const { data: server, error: serverErr } = await supabase
+        .from('servers')
+        .insert({ name, color, owner_id: userId })
+        .select()
+        .single();
 
-    // Add owner as member
-    await supabase.from('server_members').insert({ server_id: server.id, user_id: userId, role: 'owner' });
+      if (serverErr) return { error: serverErr };
+      if (!server) return { error: new Error('Sunucu oluşturulamadı.') };
 
-    // Create default categories and channels
-    const { data: cat1 } = await supabase.from('channel_categories').insert({ server_id: server.id, name: 'GENEL', position: 0 }).select().single();
-    const { data: cat2 } = await supabase.from('channel_categories').insert({ server_id: server.id, name: 'SES', position: 1 }).select().single();
+      // 2. Add owner as member
+      const { error: memberErr } = await supabase
+        .from('server_members')
+        .insert({ server_id: server.id, user_id: userId, role: 'owner' });
+      if (memberErr) console.warn('server_members insert error:', memberErr.message);
 
-    if (cat1) {
-      await supabase.from('channels').insert([
-        { server_id: server.id, category_id: cat1.id, name: 'genel', type: 'text', position: 0 },
-        { server_id: server.id, category_id: cat1.id, name: 'kurallar', type: 'text', position: 1 },
+      // 3. Create default categories
+      const [catRes1, catRes2] = await Promise.all([
+        supabase.from('channel_categories').insert({ server_id: server.id, name: 'GENEL', position: 0 }).select().single(),
+        supabase.from('channel_categories').insert({ server_id: server.id, name: 'SES', position: 1 }).select().single(),
       ]);
-    }
-    if (cat2) {
-      await supabase.from('channels').insert({ server_id: server.id, category_id: cat2.id, name: 'Sesli Sohbet', type: 'voice', position: 0 });
-    }
 
-    await fetchServers();
-    return { error: null, serverId: server.id };
+      // 4. Create default channels
+      const channelsToInsert = [];
+      if (catRes1.data) {
+        channelsToInsert.push(
+          { server_id: server.id, category_id: catRes1.data.id, name: 'genel', type: 'text', position: 0 },
+          { server_id: server.id, category_id: catRes1.data.id, name: 'duyurular', type: 'announcement', position: 1 },
+        );
+      }
+      if (catRes2.data) {
+        channelsToInsert.push(
+          { server_id: server.id, category_id: catRes2.data.id, name: 'genel-ses', type: 'voice', position: 0 },
+        );
+      }
+      if (channelsToInsert.length) {
+        const { error: chErr } = await supabase.from('channels').insert(channelsToInsert);
+        if (chErr) console.warn('channels insert error:', chErr.message);
+      }
+
+      await fetchServers();
+      return { error: null, serverId: server.id };
+    } catch (e) {
+      return { error: e instanceof Error ? e : new Error('Sunucu oluşturulamadı.') };
+    }
   };
 
   const joinServerByInvite = async (inviteCode: string, userId: string) => {

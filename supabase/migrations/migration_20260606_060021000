@@ -1,0 +1,22 @@
+-- Allow owners to read their own servers even before being in server_members
+DROP POLICY IF EXISTS servers_select ON public.servers;
+CREATE POLICY servers_select ON public.servers
+  FOR SELECT USING (
+    owner_id = auth.uid()
+    OR is_server_member(id, auth.uid())
+  );
+
+-- Also fix channel_categories and channels select to allow owner
+DROP POLICY IF EXISTS cats_select ON public.channel_categories;
+CREATE POLICY cats_select ON public.channel_categories
+  FOR SELECT USING (
+    is_server_member(server_id, auth.uid())
+    OR EXISTS (SELECT 1 FROM servers WHERE servers.id = server_id AND servers.owner_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS channels_select ON public.channels;
+CREATE POLICY channels_select ON public.channels
+  FOR SELECT USING (
+    is_server_member(server_id, auth.uid())
+    OR EXISTS (SELECT 1 FROM servers WHERE servers.id = server_id AND servers.owner_id = auth.uid())
+  );
