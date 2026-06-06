@@ -245,33 +245,64 @@ function VoicePanel({ channelId, channelName, voice }: {
   channelName: string;
   voice: ReturnType<typeof useVoiceChannel>;
 }) {
-  const { participants, isConnected, isMuted, isDeafened, error, joinChannel, leaveChannel, toggleMute, toggleDeafen } = voice;
+  const { participants, isConnected, isMuted, isDeafened, listenOnly, error, joinChannel, leaveChannel, toggleMute, toggleDeafen } = voice;
+  const micDenied = error === 'MIC_DENIED';
 
   if (!isConnected) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-6 bg-dc-bg">
         <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-dc-sidebar ring-2 ring-fox-500/20">
           <Volume2 className="h-10 w-10 text-fox-400" />
-          <span className="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full bg-fox-500 shadow-lg">
-            <span className="text-[10px] font-bold text-white">SES</span>
-          </span>
         </div>
         <div className="text-center">
           <h2 className="text-2xl font-bold text-dc-text-primary">{channelName}</h2>
-          <p className="mt-1.5 text-sm text-dc-muted-fg">Ses kanalı — bağlanmaya hazır</p>
+          <p className="mt-1.5 text-sm text-dc-muted-fg">Ses kanalı</p>
         </div>
-        {error && (
-          <div className="max-w-xs rounded-xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-center text-sm text-red-400">
-            {error}
+
+        {micDenied ? (
+          <div className="flex max-w-sm flex-col items-center gap-4">
+            <div className="rounded-xl border border-yellow-500/20 bg-yellow-500/10 px-5 py-4 text-center">
+              <div className="mb-1 flex items-center justify-center gap-2">
+                <MicOff className="h-4 w-4 text-yellow-400" />
+                <span className="text-sm font-semibold text-yellow-400">Mikrofon erişimi yok</span>
+              </div>
+              <p className="text-xs text-dc-muted-fg">
+                Tarayıcı mikrofon iznini reddetti. Adres çubuğundaki kilit simgesinden izin ver, ya da sessiz (sadece dinle) olarak katıl.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => joinChannel(channelId, true)}
+                className="flex items-center gap-2 rounded-xl border border-dc-surface bg-dc-sidebar px-5 py-3 text-sm font-semibold text-dc-text-secondary hover:bg-dc-channel-hover transition-all"
+              >
+                <VolumeX className="h-4 w-4" />
+                Sessiz Katıl
+              </button>
+              <button
+                onClick={() => joinChannel(channelId)}
+                className="flex items-center gap-2 rounded-xl bg-fox-500 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-fox-500/30 hover:bg-fox-600 active:scale-95 transition-all"
+              >
+                <Mic className="h-4 w-4" />
+                Tekrar Dene
+              </button>
+            </div>
           </div>
+        ) : (
+          <>
+            <button
+              onClick={() => joinChannel(channelId)}
+              className="rounded-xl bg-fox-500 px-10 py-3.5 text-sm font-bold text-white shadow-lg shadow-fox-500/30 hover:bg-fox-600 active:scale-95 transition-all"
+            >
+              Kanala Katıl
+            </button>
+            <button
+              onClick={() => joinChannel(channelId, true)}
+              className="text-xs text-dc-muted-fg hover:text-dc-text-secondary transition-colors"
+            >
+              Mikrofonsuz katıl
+            </button>
+          </>
         )}
-        <button
-          onClick={() => joinChannel(channelId)}
-          className="rounded-xl bg-fox-500 px-10 py-3.5 text-sm font-bold text-white shadow-lg shadow-fox-500/30 hover:bg-fox-600 active:scale-95 transition-all"
-        >
-          Kanala Katıl
-        </button>
-        <p className="text-[11px] text-dc-muted-fg/50">Mikrofon izni gereklidir</p>
       </div>
     );
   }
@@ -288,6 +319,9 @@ function VoicePanel({ channelId, channelName, voice }: {
           <div className="flex items-center gap-1.5">
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" />
             <span className="text-[11px] text-green-400">{participants.length} kişi bağlı</span>
+            {listenOnly && (
+              <span className="rounded-full bg-yellow-500/15 px-2 py-0.5 text-[10px] font-semibold text-yellow-400">Sessiz</span>
+            )}
           </div>
         </div>
         <div className="absolute bottom-0 left-0 right-0 h-px bg-dc-surface" />

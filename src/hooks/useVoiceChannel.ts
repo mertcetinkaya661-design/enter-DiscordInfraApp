@@ -28,6 +28,7 @@ export function useVoiceChannel(myUserId: string | null, myDisplayName: string |
   const [isDeafened, setIsDeafened] = useState(false);
   const [connectedChannelId, setConnectedChannelId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [listenOnly, setListenOnly] = useState(false);
 
   const rtCh = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const localStream = useRef<MediaStream | null>(null);
@@ -104,15 +105,23 @@ export function useVoiceChannel(myUserId: string | null, myDisplayName: string |
     return peer;
   }, [myUserId]);
 
-  const joinChannel = useCallback(async (channelId: string) => {
+  const joinChannel = useCallback(async (channelId: string, silent = false) => {
     if (!myUserId || !myDisplayName || isConnected) return;
     setError(null);
+    setListenOnly(false);
 
-    try {
-      localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
-      setError('Mikrofon erişimi reddedildi. Tarayıcı ayarlarından izin verin.');
-      return;
+    if (!silent) {
+      try {
+        localStream.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        // Mic denied — ask user if they want to join silently
+        setError('MIC_DENIED');
+        return;
+      }
+    } else {
+      // Listen-only: no local stream
+      localStream.current = null;
+      setListenOnly(true);
     }
 
     // Local speaking detection
@@ -242,6 +251,7 @@ export function useVoiceChannel(myUserId: string | null, myDisplayName: string |
     setParticipants([]);
     setIsMuted(false);
     setIsDeafened(false);
+    setListenOnly(false);
   }, []);
 
   const toggleMute = useCallback(() => {
@@ -286,6 +296,7 @@ export function useVoiceChannel(myUserId: string | null, myDisplayName: string |
     isConnected,
     isMuted,
     isDeafened,
+    listenOnly,
     connectedChannelId,
     error,
     joinChannel,
